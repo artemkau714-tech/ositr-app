@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Серверный центр</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: system-ui; }
+        body { background: #0f0f0f; color: #e0e0e0; padding: 20px; }
+        .container { max-width: 500px; margin: 0 auto; }
+        .page { display: none; }
+        .page.active { display: block; }
+        h1 { font-size: 28px; margin-bottom: 20px; }
+        .nav { display: flex; gap: 8px; margin-bottom: 24px; flex-wrap: wrap; }
+        .nav-btn { background: #1a1a1a; border: none; padding: 10px 16px; border-radius: 10px; color: #aaa; font-weight: bold; cursor: pointer; flex: 1; min-width: 60px; }
+        .nav-btn.active { background: #2b7be4; color: #fff; }
+        .card { background: #1a1a1a; border-radius: 14px; padding: 16px; margin: 12px 0; }
+        input, textarea { width: 100%; padding: 12px; margin: 6px 0; border-radius: 10px; border: none; background: #2a2a2a; color: #fff; }
+        textarea { height: 80px; resize: none; }
+        .btn { background: #2b7be4; border: none; padding: 12px; border-radius: 10px; color: #fff; font-weight: bold; width: 100%; margin-top: 8px; cursor: pointer; }
+        .btn-success { background: #2be47b; }
+        .btn-danger { background: #e42b2b; }
+        .btn-gray { background: #333; }
+        .btn-sm { padding: 8px; font-size: 14px; }
+        .hidden { display: none; }
+        #admin-error { color: #ff4444; display: none; margin-top: 8px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: #1a1a1a; border-radius: 16px; padding: 24px; max-width: 500px; width: 90%; max-height: 80vh; overflow-y: auto; }
+        .modal-close { float: right; background: none; border: none; color: #fff; font-size: 24px; cursor: pointer; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <!-- НАВИГАЦИЯ -->
+    <div class="nav">
+        <button class="nav-btn active" onclick="showPage('main')">🏠 Главная</button>
+        <button class="nav-btn" onclick="showPage('appeals')">📩 Обращения</button>
+        <button class="nav-btn" onclick="showPage('rules')">📜 Правила</button>
+        <button class="nav-btn" onclick="showPage('admin')">⚙️ Админ</button>
+    </div>
+
+    <!-- ГЛАВНАЯ -->
+    <div id="page-main" class="page active">
+        <h1>🏠 Добро пожаловать!</h1>
+        <div id="server-info" class="card">
+            <p><strong>Название:</strong> <span id="server-name">Мой сервер</span></p>
+            <p><strong>IP:</strong> <span id="server-ip">play.myserver.ru</span></p>
+            <p><strong>Версия:</strong> <span id="server-version">1.20.4</span></p>
+            <p><strong>Описание:</strong></p>
+            <p id="server-description">Добро пожаловать на лучший сервер!</p>
+        </div>
+        <div class="card">
+            <p>👥 <strong>Онлайн:</strong> <span id="online-count">42</span> игроков</p>
+        </div>
+    </div>
+
+    <!-- ОБРАЩЕНИЯ -->
+    <div id="page-appeals" class="page">
+        <h1>📩 Обращения</h1>
+        <button class="btn" onclick="showAppealForm()">➕ Новое обращение</button>
+        <div id="appeal-form" class="card hidden">
+            <h3>Создать обращение</h3>
+            <input type="text" id="appeal-title" placeholder="Тема">
+            <textarea id="appeal-text" placeholder="Текст..."></textarea>
+            <button class="btn btn-success" onclick="createAppeal()">Отправить</button>
+            <button class="btn btn-gray" onclick="document.getElementById('appeal-form').classList.add('hidden')">Отмена</button>
+        </div>
+        <div id="appeals-list">
+            <div class="card"><h3>Не могу зайти</h3><small>@player1 • <span class="status-new">Новое</span></small></div>
+            <div class="card"><h3>Пропали привилегии</h3><small>@player2 • <span class="status-answered">Отвечено</span></small></div>
+        </div>
+    </div>
+
+    <!-- ПРАВИЛА -->
+    <div id="page-rules" class="page">
+        <h1>📜 Правила</h1>
+        <div id="rules-content" class="card">
+            <p><strong>1.</strong> Будьте вежливы.</p>
+            <p><strong>2.</strong> Без читов.</p>
+            <p><strong>3.</strong> Не спамить.</p>
+        </div>
+    </div>
+
+    <!-- АДМИН-ПАНЕЛЬ -->
+    <div id="page-admin" class="page">
+        <h1>⚙️ Админ-панель</h1>
+        <div id="admin-login" class="card">
+            <h3>🔐 Вход</h3>
+            <input type="text" id="admin-login-input" placeholder="Логин">
+            <input type="password" id="admin-password-input" placeholder="Пароль">
+            <button class="btn btn-success" onclick="adminLogin()">Войти</button>
+            <div id="admin-error">❌ Неверный логин или пароль</div>
+        </div>
+        <div id="admin-panel" style="display:none;">
+            <div class="card">
+                <h3>📝 Редактировать главную</h3>
+                <input type="text" id="edit-name" placeholder="Название" value="Мой сервер">
+                <input type="text" id="edit-ip" placeholder="IP" value="play.myserver.ru">
+                <input type="text" id="edit-version" placeholder="Версия" value="1.20.4">
+                <textarea id="edit-description">Добро пожаловать!</textarea>
+                <button class="btn btn-success" onclick="saveServerInfo()">💾 Сохранить</button>
+            </div>
+            <div class="card">
+                <h3>📜 Редактировать правила</h3>
+                <textarea id="edit-rules" rows="6">1. Будьте вежливы.\n2. Без читов.\n3. Не спамить.</textarea>
+                <button class="btn btn-success" onclick="saveRules()">💾 Сохранить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+
+    const ADMIN_LOGIN = 'ChillServ';
+    const ADMIN_PASSWORD = 'bdh737-$&#-"-bdhsjidi&37_7283';
+
+    function showPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById('page-' + id).classList.add('active');
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.nav-btn[onclick="showPage('${id}')"]`).classList.add('active');
+    }
+
+    function adminLogin() {
+        const login = document.getElementById('admin-login-input').value;
+        const pass = document.getElementById('admin-password-input').value;
+        if (login === ADMIN_LOGIN && pass === ADMIN_PASSWORD) {
+            document.getElementById('admin-login').style.display = 'none';
+            document.getElementById('admin-panel').style.display = 'block';
+            document.getElementById('admin-error').style.display = 'none';
+        } else {
+            document.getElementById('admin-error').style.display = 'block';
+        }
+    }
+
+    function saveServerInfo() {
+        const data = {
+            action: 'save_server_info',
+            name: document.getElementById('edit-name').value,
+            ip: document.getElementById('edit-ip').value,
+            version: document.getElementById('edit-version').value,
+            desc: document.getElementById('edit-description').value
+        };
+        document.getElementById('server-name').textContent = data.name;
+        document.getElementById('server-ip').textContent = data.ip;
+        document.getElementById('server-version').textContent = data.version;
+        document.getElementById('server-description').textContent = data.desc;
+        tg.sendData(JSON.stringify(data));
+        alert('✅ Сохранено');
+    }
+
+    function saveRules() {
+        const rules = document.getElementById('edit-rules').value;
+        document.getElementById('rules-content').innerHTML = rules.split('\n').map(line => `<p>${line}</p>`).join('');
+        tg.sendData(JSON.stringify({ action: 'save_rules', rules }));
+        alert('✅ Правила сохранены');
+    }
+
+    function showAppealForm() {
+        document.getElementById('appeal-form').classList.remove('hidden');
+    }
+
+    function createAppeal() {
+        const title = document.getElementById('appeal-title').value.trim();
+        const text = document.getElementById('appeal-text').value.trim();
+        if (!title || !text) return alert('Заполните поля');
+        tg.sendData(JSON.stringify({
+            action: 'new_appeal',
+            title, text,
+            user_id: tg.initDataUnsafe?.user?.id || 0,
+            username: tg.initDataUnsafe?.user?.username || 'anon'
+        }));
+        alert('✅ Отправлено');
+        document.getElementById('appeal-title').value = '';
+        document.getElementById('appeal-text').value = '';
+        document.getElementById('appeal-form').classList.add('hidden');
+    }
+
+    setInterval(() => {
+        document.getElementById('online-count').textContent = Math.floor(Math.random() * 100) + 10;
+    }, 30000);
+</script>
+</body>
+</html>
