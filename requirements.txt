@@ -1,0 +1,5 @@
+aiogram>=2.25
+telethon>=1.34
+phonenumbers>=8.13
+requests>=2.31
+beautifulsoup4>=4.12

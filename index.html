@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OSINT Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <h1>🔍 OSINT-досье</h1>
+        <p>Введите @username для получения полного профиля</p>
+
+        <input type="text" id="username" placeholder="@durov" value="durov">
+        <button id="runBtn">🚀 Пробить</button>
+
+        <div id="loader" class="hidden">⏳ Сбор данных...</div>
+
+        <div id="result" class="hidden">
+            <h2>📋 Досье</h2>
+            <div id="profileData"></div>
+            <button id="downloadBtn">⬇️ Скачать отчёт (JSON)</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
