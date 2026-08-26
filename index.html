@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Помощник сервера</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>🏠 Помощник</h1>
+            <p id="user-greeting">Привет, Игрок!</p>
+        </header>
+
+        <nav>
+            <button class="tab-btn active" data-tab="rules">📜 Правила</button>
+            <button class="tab-btn" data-tab="links">🔗 Ссылки</button>
+            <button class="tab-btn" data-tab="admins">👑 Админы</button>
+            <button class="tab-btn" data-tab="rating">⭐ Оценка</button>
+        </nav>
+
+        <main>
+            <!-- Правила -->
+            <section id="tab-rules" class="tab-content active">
+                <h2>📜 Правила сервера</h2>
+                <ul>
+                    <li>✅ Не гриферить</li>
+                    <li>✅ Не использовать читы</li>
+                    <li>✅ Уважать игроков</li>
+                    <li>✅ Строить в отведённых зонах</li>
+                </ul>
+                <button id="rules-accept" class="primary-btn">✅ Принимаю</button>
+            </section>
+
+            <!-- Ссылки -->
+            <section id="tab-links" class="tab-content">
+                <h2>🔗 Полезные ссылки</h2>
+                <div class="link-card" onclick="openLink('https://t.me/your_channel')">
+                    📢 Telegram-канал
+                </div>
+                <div class="link-card" onclick="openLink('https://your-site.com')">
+                    🌐 Сайт сервера
+                </div>
+                <div class="link-card" onclick="openLink('https://discord.gg/invite')">
+                    💬 Discord
+                </div>
+            </section>
+
+            <!-- Админы -->
+            <section id="tab-admins" class="tab-content">
+                <h2>👑 Список администрации</h2>
+                <div id="admins-list">
+                    <p class="loading">⏳ Загрузка...</p>
+                </div>
+            </section>
+
+            <!-- Оценка -->
+            <section id="tab-rating" class="tab-content">
+                <h2>⭐ Оценить администратора</h2>
+                <select id="admin-select">
+                    <option value="">Загрузка...</option>
+                </select>
+                <div class="stars" id="stars-container">
+                    <span data-value="1">⭐</span>
+                    <span data-value="2">⭐</span>
+                    <span data-value="3">⭐</span>
+                    <span data-value="4">⭐</span>
+                    <span data-value="5">⭐</span>
+                </div>
+                <textarea id="rating-comment" placeholder="💬 Комментарий (необязательно)"></textarea>
+                <button id="submit-rating" class="primary-btn">📨 Отправить оценку</button>
+                <div id="rating-status"></div>
+            </section>
+        </main>
+
+        <footer>
+            <span>v1.0</span>
+        </footer>
+    </div>
+
+    <!-- Сначала загружаем эмулятор (для браузера) -->
+    <script src="emulator.js"></script>
+    <!-- Потом основную логику -->
+    <script src="app.js"></script>
+</body>
+</html>
