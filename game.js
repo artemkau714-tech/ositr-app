@@ -4,9 +4,9 @@ import * as THREE from 'three';
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87CEEB);
 
-// Камера на уровне глаз (1.7) - вид от первого лица
-const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 1.7, 0);
+// Камера на уровне 0.5 (чуть выше земли, чтобы видеть траву)
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0.6, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -47,12 +47,12 @@ for (let i = 0; i < 300; i++) {
     );
     const angle = Math.random() * Math.PI * 2;
     const radius = 1.5 + Math.random() * 3.5;
-    grass.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+    grass.position.set(Math.cos(angle) * radius, -0.05, Math.sin(angle) * radius);
     grass.rotation.y = Math.random() * Math.PI;
     scene.add(grass);
 }
 
-// --- Деревья ---
+// --- Деревья (чуть больше, чтобы быть выше игрока) ---
 const trees = [];
 const woodCountSpan = document.getElementById('woodCount');
 let wood = 0;
@@ -60,19 +60,21 @@ let wood = 0;
 function createTree(x, z) {
     const group = new THREE.Group();
     
+    // Ствол выше (1.8)
     const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.3, 1.2),
+        new THREE.CylinderGeometry(0.15, 0.25, 1.8, 6),
         new THREE.MeshStandardMaterial({ color: 0x8B4513 })
     );
-    trunk.position.y = 0.6;
+    trunk.position.y = 0.9;
     trunk.castShadow = true;
     group.add(trunk);
     
+    // Крона больше
     const crown = new THREE.Mesh(
-        new THREE.SphereGeometry(0.7, 6),
+        new THREE.SphereGeometry(0.9, 7),
         new THREE.MeshStandardMaterial({ color: 0x228B22 })
     );
-    crown.position.y = 1.5;
+    crown.position.y = 2.0;
     crown.castShadow = true;
     group.add(crown);
     
@@ -95,29 +97,137 @@ for (let i = 0; i < 12; i++) {
 createTree(0.8, 0.8);
 createTree(-0.7, -0.9);
 
-// --- Управление от первого лица (только поворот камеры) ---
+// --- ДЖОЙСТИК (для телефона) ---
+const joystickContainer = document.createElement('div');
+joystickContainer.style.cssText = `
+    position: absolute;
+    bottom: 30px;
+    left: 30px;
+    width: 120px;
+    height: 120px;
+    border-radius: 60px;
+    background: rgba(255,255,255,0.15);
+    border: 2px solid rgba(255,255,255,0.3);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    touch-action: none;
+`;
+document.body.appendChild(joystickContainer);
+
+const joystickKnob = document.createElement('div');
+joystickKnob.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    background: rgba(255,255,255,0.4);
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+`;
+joystickContainer.appendChild(joystickKnob);
+
+// --- КНОПКА РУБКИ (для телефона) ---
+const chopBtn = document.createElement('div');
+chopBtn.style.cssText = `
+    position: absolute;
+    bottom: 40px;
+    right: 30px;
+    width: 80px;
+    height: 80px;
+    border-radius: 40px;
+    background: rgba(255, 200, 0, 0.3);
+    border: 3px solid #ffd700;
+    color: #ffd700;
+    font-size: 30px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    user-select: none;
+    touch-action: none;
+    text-shadow: 0 0 10px rgba(255,215,0,0.5);
+    backdrop-filter: blur(4px);
+`;
+chopBtn.textContent = '🪓';
+document.body.appendChild(chopBtn);
+
+// --- Переменные для движения ---
+let moveX = 0;
+let moveZ = 0;
 let pitch = 0;
 let yaw = 0;
+const speed = 0.05;
 
-// Поворот мышью (ПК)
-document.addEventListener('mousemove', (event) => {
-    if (document.pointerLockElement === renderer.domElement) {
-        yaw -= event.movementX * 0.002;
-        pitch -= event.movementY * 0.002;
-        pitch = Math.max(-1.2, Math.min(1.2, pitch));
+// --- Управление джойстиком ---
+joystickContainer.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = joystickContainer.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    const dx = touch.clientX - centerX;
+    const dy = touch.clientY - centerY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = rect.width / 2 - 25;
+    
+    if (dist > maxDist) {
+        moveX = (dx / dist) * 0.8;
+        moveZ = (dy / dist) * 0.8;
+    } else {
+        moveX = dx / maxDist * 0.8;
+        moveZ = dy / maxDist * 0.8;
     }
+    
+    joystickKnob.style.transform = `translate(calc(-50% + ${moveX * 50}px), calc(-50% + ${moveZ * 50}px))`;
 });
 
-// Поворот на телефоне (по свайпу)
+joystickContainer.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = joystickContainer.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    
+    const dx = touch.clientX - centerX;
+    const dy = touch.clientY - centerY;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = rect.width / 2 - 25;
+    
+    if (dist > maxDist) {
+        moveX = (dx / dist) * 0.8;
+        moveZ = (dy / dist) * 0.8;
+    } else {
+        moveX = dx / maxDist * 0.8;
+        moveZ = dy / maxDist * 0.8;
+    }
+    
+    joystickKnob.style.transform = `translate(calc(-50% + ${moveX * 50}px), calc(-50% + ${moveZ * 50}px))`;
+});
+
+joystickContainer.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    moveX = 0;
+    moveZ = 0;
+    joystickKnob.style.transform = 'translate(-50%, -50%)';
+});
+
+// --- Поворот камеры (свайп по экрану) ---
 let touchStartX = 0, touchStartY = 0;
 
 renderer.domElement.addEventListener('touchstart', (e) => {
+    // Игнорируем, если коснулись джойстика или кнопки
+    if (e.target === joystickContainer || e.target === chopBtn || e.target === joystickKnob) return;
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
 });
 
 renderer.domElement.addEventListener('touchmove', (e) => {
+    if (e.target === joystickContainer || e.target === chopBtn || e.target === joystickKnob) return;
     e.preventDefault();
     const touch = e.touches[0];
     const dx = touch.clientX - touchStartX;
@@ -127,30 +237,24 @@ renderer.domElement.addEventListener('touchmove', (e) => {
     
     yaw -= dx * 0.005;
     pitch -= dy * 0.005;
-    pitch = Math.max(-1.2, Math.min(1.2, pitch));
+    pitch = Math.max(-1.0, Math.min(1.0, pitch));
 });
 
-// Клик для блокировки курсора (ПК)
-renderer.domElement.addEventListener('click', () => {
-    if (document.pointerLockElement !== renderer.domElement) {
-        renderer.domElement.requestPointerLock();
-    }
+// --- Кнопка рубки ---
+chopBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    chopTree();
 });
 
-// --- Сбор ресурсов ---
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
+chopBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    chopTree();
+});
 
-function handleTreeHit(event) {
-    if (event) {
-        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-        raycaster.setFromCamera(mouse, camera);
-    } else {
-        // Для телефона - луч по центру
-        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    }
-    
+// --- Функция рубки дерева ---
+function chopTree() {
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
     const treeMeshes = trees.map(t => t.mesh);
     const intersects = raycaster.intersectObjects(treeMeshes);
     
@@ -166,20 +270,58 @@ function handleTreeHit(event) {
     }
 }
 
-renderer.domElement.addEventListener('click', handleTreeHit);
+// --- Сбор ресурсов (ПК) ---
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
 
-// Тап по экрану на телефоне
-renderer.domElement.addEventListener('touchstart', (e) => {
-    if (e.touches.length === 1) {
-        handleTreeHit(null);
+renderer.domElement.addEventListener('click', (event) => {
+    if (event.target === joystickContainer || event.target === chopBtn) return;
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const treeMeshes = trees.map(t => t.mesh);
+    const intersects = raycaster.intersectObjects(treeMeshes);
+    
+    if (intersects.length > 0) {
+        const hitMesh = intersects[0].object;
+        const index = trees.findIndex(t => t.mesh === hitMesh);
+        if (index !== -1) {
+            scene.remove(trees[index].mesh);
+            trees.splice(index, 1);
+            wood += 1;
+            woodCountSpan.textContent = wood;
+        }
     }
-}, { passive: true });
+});
 
-// --- Анимация (без движения, просто обновляем поворот камеры) ---
+// --- Обновление HUD ---
+const hint = document.getElementById('hint');
+if (hint) {
+    hint.innerHTML = '🕹️ Джойстик — ходьба | 🪓 Кнопка — рубить | Свайп — крутить головой';
+}
+
+// --- Анимация ---
 function animate() {
     requestAnimationFrame(animate);
     
-    // Применяем поворот камеры
+    // Движение от джойстика
+    if (moveX !== 0 || moveZ !== 0) {
+        const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+        
+        // Перемещение (Z - вперёд, X - вправо)
+        camera.position.x += forward.x * moveZ * speed + right.x * moveX * speed;
+        camera.position.z += forward.z * moveZ * speed + right.z * moveX * speed;
+    }
+    
+    // Ограничение островом
+    const distFromCenter = Math.sqrt(camera.position.x * camera.position.x + camera.position.z * camera.position.z);
+    if (distFromCenter > 4.8) {
+        camera.position.x = (camera.position.x / distFromCenter) * 4.8;
+        camera.position.z = (camera.position.z / distFromCenter) * 4.8;
+    }
+    
+    // Поворот камеры
     const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
     camera.quaternion.setFromEuler(euler);
     
