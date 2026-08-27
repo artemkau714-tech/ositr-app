@@ -6,16 +6,11 @@
     <title>Остров Выживания</title>
     
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             overflow: hidden;
             background: #1a1a2e;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             touch-action: none;
             position: fixed;
             width: 100%;
@@ -23,48 +18,36 @@
             user-select: none;
         }
         
-        /* Верхний HUD (только заголовок) */
-        #hud {
-            position: absolute;
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            color: #ffffff;
-            background: rgba(0, 0, 0, 0.4);
-            backdrop-filter: blur(6px);
-            padding: 4px 16px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            z-index: 100;
-            user-select: none;
-            pointer-events: none;
-            font-size: 12px;
-            letter-spacing: 3px;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
-            white-space: nowrap;
-            opacity: 0.7;
-        }
-        
-        /* Прицел (упрощённый) */
         #crosshair {
             position: absolute;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: rgba(255, 255, 255, 0.25);
+            color: rgba(255, 255, 255, 0.3);
             font-size: 24px;
-            font-weight: 100;
             z-index: 100;
-            text-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
             pointer-events: none;
-            user-select: none;
             font-family: 'Courier New', monospace;
         }
+        #crosshair::before { content: '+'; }
         
-        #crosshair::before {
-            content: '+';
-            display: block;
+        /* ГОЛОД (процент) */
+        #hunger {
+            position: absolute;
+            bottom: 180px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 14px;
+            background: rgba(0,0,0,0.6);
+            padding: 6px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,215,0,0.2);
+            z-index: 150;
+            backdrop-filter: blur(4px);
+            pointer-events: none;
         }
+        #hunger span { color: #ffd700; font-weight: bold; }
         
         /* Уведомления */
         .notification {
@@ -72,77 +55,36 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.85);
+            background: rgba(0,0,0,0.85);
             color: white;
             padding: 12px 24px;
             border-radius: 10px;
             font-size: 16px;
             z-index: 500;
             pointer-events: none;
-            font-family: 'Segoe UI', sans-serif;
-            border: 1px solid rgba(255, 215, 0, 0.2);
-            text-align: center;
-            max-width: 85%;
+            border: 1px solid rgba(255,215,0,0.2);
             animation: fadeOut 2.5s forwards;
             backdrop-filter: blur(4px);
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            font-weight: 500;
         }
-        
         @keyframes fadeOut {
             0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-            70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             100% { opacity: 0; transform: translate(-50%, -60%) scale(0.95); }
         }
         
-        /* Адаптивность */
         @media (max-width: 600px) {
-            #hud {
-                top: 8px;
-                font-size: 9px;
-                padding: 3px 10px;
-                letter-spacing: 1.5px;
-            }
-            #crosshair {
-                font-size: 18px;
-            }
-            .notification {
-                font-size: 13px;
-                padding: 10px 16px;
-                max-width: 90%;
-            }
-        }
-        
-        /* Адаптация под хотбар (чтобы не налезал на кнопки) */
-        @media (max-width: 500px) {
-            .hotbar-slot {
-                width: 36px !important;
-                height: 36px !important;
-                font-size: 16px !important;
-            }
-            .hotbar-slot .slot-count {
-                font-size: 8px !important;
-            }
+            #crosshair { font-size: 18px; }
+            #hunger { font-size: 11px; padding: 4px 12px; bottom: 160px; }
+            .notification { font-size: 13px; padding: 10px 16px; }
         }
     </style>
 </head>
 <body>
-    <!-- Заголовок -->
-    <div id="hud">🏝️ ОСТРОВ ВЫЖИВАНИЯ</div>
-    
-    <!-- Прицел -->
     <div id="crosshair"></div>
-
-    <!-- Подключаем Three.js -->
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
-            }
-        }
-    </script>
+    <div id="hunger">🍖 Голод: <span id="hungerValue">100</span>%</div>
     
-    <!-- Основной код игры -->
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
     <script type="module" src="game.js"></script>
 </body>
-    </html>
+</html>
