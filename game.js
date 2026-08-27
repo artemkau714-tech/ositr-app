@@ -3,6 +3,7 @@ import * as THREE from 'three';
 // ========== НАСТРОЙКИ ==========
 const IS_MOBILE = /Mobi|Android|iPhone/i.test(navigator.userAgent);
 const WOOD_FOR_AXE = 3;
+const HOTBAR_SLOTS = 9;
 
 // ========== СЦЕНА ==========
 const scene = new THREE.Scene();
@@ -49,7 +50,7 @@ ocean.rotation.x = -Math.PI / 2;
 ocean.position.y = -0.15;
 scene.add(ocean);
 
-// ========== ОСТРОВ (ЗЕЛЁНАЯ ЗЕМЛЯ) ==========
+// ========== ОСТРОВ ==========
 const island = new THREE.Mesh(
     new THREE.CircleGeometry(6, 64),
     new THREE.MeshStandardMaterial({ color: 0x6b8e23, roughness: 0.9 })
@@ -72,7 +73,7 @@ grassLayer.rotation.x = -Math.PI / 2;
 grassLayer.position.y = -0.08;
 scene.add(grassLayer);
 
-// ========== ВЫСОКАЯ ТРАВА ==========
+// ========== ТРАВА ==========
 const grassBlades = [];
 const grassMat = new THREE.MeshStandardMaterial({ 
     color: new THREE.Color().setHSL(0.28, 0.6, 0.35),
@@ -360,70 +361,190 @@ playerGroup.add(axeGroup);
 playerGroup.position.set(0, -0.1, 0);
 scene.add(playerGroup);
 
-// ========== ИНВЕНТАРЬ ==========
-let inventory = { wood: 0, logs: 0 };
+// ========== ПАЛКИ НА ЗЕМЛЕ ==========
+const sticks = [];
+for (let i = 0; i < 25; i++) {
+    const stick = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.01, 0.015, 0.1 + Math.random() * 0.1, 4),
+        new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.9 })
+    );
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 0.5 + Math.random() * 4.5;
+    stick.position.set(
+        Math.cos(angle) * radius,
+        0.02,
+        Math.sin(angle) * radius
+    );
+    stick.rotation.x = Math.random() * 0.5;
+    stick.rotation.z = Math.random() * 0.5;
+    stick.castShadow = true;
+    scene.add(stick);
+    sticks.push(stick);
+}// ========== МАЙНКРАФТ-ИНВЕНТАРЬ (ХОТБАР) ==========
+let inventory = { 
+    wood: 0, 
+    logs: 0,
+    slots: new Array(HOTBAR_SLOTS).fill(null),
+    selectedSlot: 0
+};
+
+// Первый слот - палки, второй - брёвна (для демонстрации)
+inventory.slots[0] = { id: 'stick', name: 'Палка', icon: '🥢', count: 0 };
+inventory.slots[1] = { id: 'log', name: 'Бревно', icon: '🪵', count: 0 };
+inventory.slots[2] = { id: 'axe', name: 'Топор', icon: '🪓', count: 0 };
+
 let hasAxe = false;
 let isChopping = false;
 let chopProgress = 0;
 let targetTree = null;
 
-// Создаём UI инвентаря
-const inventoryDiv = document.createElement('div');
-inventoryDiv.style.cssText = `
+// Создаём HOTBAR (как в Майнкрафт)
+const hotbarDiv = document.createElement('div');
+hotbarDiv.style.cssText = `
     position: absolute;
-    bottom: 140px;
+    bottom: 20px;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(0,0,0,0.8);
+    display: flex;
+    gap: 4px;
+    z-index: 150;
+    background: rgba(0,0,0,0.6);
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 2px solid rgba(255,255,255,0.1);
     backdrop-filter: blur(8px);
-    padding: 12px 24px;
-    border-radius: 16px;
-    border: 1px solid rgba(255,215,0,0.3);
+`;
+
+// Создаём 9 слотов
+const slotElements = [];
+for (let i = 0; i < HOTBAR_SLOTS; i++) {
+    const slot = document.createElement('div');
+    slot.style.cssText = `
+        width: 48px;
+        height: 48px;
+        background: rgba(0,0,0,0.4);
+        border: 2px solid ${i === 0 ? '#ffd700' : 'rgba(255,255,255,0.2)'};
+        border-radius: 4px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 20px;
+        position: relative;
+        transition: all 0.2s;
+        cursor: pointer;
+    `;
+    slot.innerHTML = `
+        <span style="font-size:22px;line-height:1;" class="slot-icon">${i === 0 ? '🥢' : ''}</span>
+        <span style="font-size:10px;position:absolute;bottom:2px;right:4px;color:#ffd700;font-weight:bold;" class="slot-count">${i === 0 ? '0' : ''}</span>
+    `;
+    slot.dataset.index = i;
+    
+    // Клик для выбора слота (как в Майнкрафт)
+    slot.addEventListener('click', () => {
+        selectSlot(i);
+    });
+    
+    hotbarDiv.appendChild(slot);
+    slotElements.push(slot);
+}
+document.body.appendChild(hotbarDiv);
+
+// Функция выбора слота
+function selectSlot(index) {
+    inventory.selectedSlot = index;
+    slotElements.forEach((el, i) => {
+        el.style.border = i === index ? '2px solid #ffd700' : '2px solid rgba(255,255,255,0.2)';
+        el.style.background = i === index ? 'rgba(255,215,0,0.15)' : 'rgba(0,0,0,0.4)';
+    });
+}
+
+// Обновление инвентаря (как в Майнкрафт)
+function updateHotbar() {
+    // Обновляем слоты
+    for (let i = 0; i < HOTBAR_SLOTS; i++) {
+        const data = inventory.slots[i];
+        const iconEl = slotElements[i].querySelector('.slot-icon');
+        const countEl = slotElements[i].querySelector('.slot-count');
+        
+        if (data && data.count > 0) {
+            iconEl.textContent = data.icon || '📦';
+            countEl.textContent = data.count;
+            countEl.style.display = 'block';
+        } else {
+            iconEl.textContent = '';
+            countEl.textContent = '';
+            countEl.style.display = 'none';
+        }
+    }
+    
+    // Обновляем статус топора
+    const axeStatus = document.getElementById('axeStatus');
+    if (axeStatus) {
+        if (hasAxe) {
+            axeStatus.textContent = '🪓 Есть';
+            axeStatus.style.color = '#ffd700';
+        } else {
+            axeStatus.textContent = '🔨 Нет';
+            axeStatus.style.color = '#ff6b6b';
+        }
+    }
+}
+
+// Функция добавления предмета в инвентарь
+function addToInventory(itemId, itemName, icon, count = 1) {
+    // Ищем существующий слот с таким же предметом
+    for (let i = 0; i < HOTBAR_SLOTS; i++) {
+        if (inventory.slots[i] && inventory.slots[i].id === itemId) {
+            inventory.slots[i].count += count;
+            updateHotbar();
+            return true;
+        }
+    }
+    
+    // Ищем пустой слот
+    for (let i = 0; i < HOTBAR_SLOTS; i++) {
+        if (!inventory.slots[i] || inventory.slots[i].count === 0) {
+            inventory.slots[i] = { id: itemId, name: itemName, icon: icon, count: count };
+            updateHotbar();
+            return true;
+        }
+    }
+    
+    return false; // Инвентарь полон
+}
+
+// Инициализация: добавляем примеры предметов
+addToInventory('stick', 'Палка', '🥢', 0);
+addToInventory('log', 'Бревно', '🪵', 0);
+
+// Создаём дополнительный HUD для ресурсов (сверху)
+const resourceHUD = document.createElement('div');
+resourceHUD.style.cssText = `
+    position: absolute;
+    top: 70px;
+    right: 20px;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,215,0,0.2);
     color: white;
     font-family: 'Segoe UI', sans-serif;
     z-index: 150;
-    display: flex;
-    gap: 25px;
-    font-size: 15px;
+    font-size: 13px;
     user-select: none;
     pointer-events: none;
-    flex-wrap: wrap;
-    justify-content: center;
+    min-width: 120px;
 `;
-inventoryDiv.innerHTML = `
-    <div class="inv-item">🪵 Древесина: <span id="woodCount">0</span></div>
-    <div class="inv-item">🪵 Брёвна: <span id="logCount">0</span></div>
-    <div class="inv-item" id="axeStatus">🔨 Нет топора</div>
+resourceHUD.innerHTML = `
+    <div>🪵 Древесина: <span id="woodCount" style="color:#ffd700;">0</span></div>
+    <div>📦 Брёвна: <span id="logCount" style="color:#ffd700;">0</span></div>
+    <div id="axeStatus" style="color:#ff6b6b;">🔨 Нет топора</div>
 `;
-document.body.appendChild(inventoryDiv);
+document.body.appendChild(resourceHUD);
 
-// Прогресс рубки
-const progressDiv = document.createElement('div');
-progressDiv.style.cssText = `
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 200px;
-    height: 24px;
-    background: rgba(0,0,0,0.8);
-    border-radius: 12px;
-    border: 2px solid #ffd700;
-    z-index: 300;
-    display: none;
-    overflow: hidden;
-    box-shadow: 0 0 30px rgba(255,215,0,0.2);
-`;
-const progressFill = document.createElement('div');
-progressFill.style.cssText = `
-    width: 0%;
-    height: 100%;
-    background: linear-gradient(90deg, #ff6b6b, #ffd700);
-    border-radius: 10px;
-    transition: width 0.1s;
-`;
-progressDiv.appendChild(progressFill);
-document.body.appendChild(progressDiv);
 // ========== УПРАВЛЕНИЕ ==========
 let moveX = 0, moveZ = 0;
 let pitch = -0.1, yaw = 0;
@@ -433,7 +554,7 @@ let isLooking = false;
 const joystick = document.createElement('div');
 joystick.style.cssText = `
     position: fixed;
-    bottom: 30px;
+    bottom: 100px;
     left: 30px;
     width: 120px;
     height: 120px;
@@ -460,19 +581,19 @@ knob.style.cssText = `
 `;
 joystick.appendChild(knob);
 
-// --- Кнопка рубки ---
-const chopBtn = document.createElement('div');
-chopBtn.style.cssText = `
+// --- Кнопка действия (рубить/собирать) ---
+const actionBtn = document.createElement('div');
+actionBtn.style.cssText = `
     position: fixed;
-    bottom: 40px;
+    bottom: 110px;
     right: 30px;
-    width: 80px;
-    height: 80px;
-    border-radius: 40px;
+    width: 70px;
+    height: 70px;
+    border-radius: 35px;
     background: rgba(255, 200, 0, 0.25);
     border: 3px solid #ffd700;
     color: #ffd700;
-    font-size: 36px;
+    font-size: 30px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -482,8 +603,32 @@ chopBtn.style.cssText = `
     backdrop-filter: blur(4px);
     box-shadow: 0 0 30px rgba(255,215,0,0.1);
 `;
-chopBtn.textContent = '🪓';
-document.body.appendChild(chopBtn);
+actionBtn.textContent = '⚔️';
+document.body.appendChild(actionBtn);
+
+// --- Кнопка переключения вида ---
+const viewBtn = document.createElement('div');
+viewBtn.style.cssText = `
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    background: rgba(0,0,0,0.5);
+    border: 2px solid rgba(255,255,255,0.2);
+    color: white;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    user-select: none;
+    touch-action: none;
+    backdrop-filter: blur(4px);
+`;
+viewBtn.textContent = '👤';
+document.body.appendChild(viewBtn);
 
 // ========== ОБРАБОТКА ДЖОЙСТИКА ==========
 joystick.addEventListener('touchstart', handleJoystick);
@@ -522,7 +667,7 @@ function handleJoystick(e) {
 let touchStartX = 0, touchStartY = 0;
 
 document.addEventListener('touchstart', (e) => {
-    if (e.target === joystick || e.target === chopBtn || e.target === knob) return;
+    if (e.target === joystick || e.target === actionBtn || e.target === viewBtn || e.target === knob) return;
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
@@ -530,7 +675,7 @@ document.addEventListener('touchstart', (e) => {
 }, { passive: true });
 
 document.addEventListener('touchmove', (e) => {
-    if (e.target === joystick || e.target === chopBtn || e.target === knob) return;
+    if (e.target === joystick || e.target === actionBtn || e.target === viewBtn || e.target === knob) return;
     e.preventDefault();
     const touch = e.touches[0];
     const dx = touch.clientX - touchStartX;
@@ -546,27 +691,70 @@ document.addEventListener('touchend', () => {
     isLooking = false;
 });
 
-// ========== ПАЛКИ НА ЗЕМЛЕ ==========
-const sticks = [];
-for (let i = 0; i < 25; i++) {
-    const stick = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.01, 0.015, 0.1 + Math.random() * 0.1, 4),
-        new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.9 })
-    );
-    const angle = Math.random() * Math.PI * 2;
-    const radius = 0.5 + Math.random() * 4.5;
-    stick.position.set(
-        Math.cos(angle) * radius,
-        0.02,
-        Math.sin(angle) * radius
-    );
-    stick.rotation.x = Math.random() * 0.5;
-    stick.rotation.z = Math.random() * 0.5;
-    stick.castShadow = true;
-    scene.add(stick);
-    sticks.push(stick);
-}
+// ========== ПРОГРЕСС РУБКИ ==========
+const progressDiv = document.createElement('div');
+progressDiv.style.cssText = `
+    position: absolute;
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 220px;
+    height: 28px;
+    background: rgba(0,0,0,0.85);
+    border-radius: 14px;
+    border: 2px solid #ffd700;
+    z-index: 300;
+    display: none;
+    overflow: hidden;
+    box-shadow: 0 0 40px rgba(255,215,0,0.15);
+`;
+const progressFill = document.createElement('div');
+progressFill.style.cssText = `
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #ff6b6b, #ffd700, #ff6b6b);
+    background-size: 200% 100%;
+    border-radius: 12px;
+    transition: width 0.1s;
+    animation: shimmer 1s linear infinite;
+`;
+progressDiv.appendChild(progressFill);
+document.body.appendChild(progressDiv);
 
+const styleShimmer = document.createElement('style');
+styleShimmer.textContent = `
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+`;
+document.head.appendChild(styleShimmer);
+
+// ========== УЛУЧШЕННЫЕ УВЕДОМЛЕНИЯ ==========
+let notificationTimeout = null;
+
+function showMessage(text) {
+    const oldMsg = document.querySelector('.notification');
+    if (oldMsg) {
+        oldMsg.remove();
+        if (notificationTimeout) {
+            clearTimeout(notificationTimeout);
+            notificationTimeout = null;
+        }
+    }
+    
+    const msg = document.createElement('div');
+    msg.className = 'notification';
+    msg.textContent = text;
+    document.body.appendChild(msg);
+    
+    notificationTimeout = setTimeout(() => {
+        if (msg.parentNode) {
+            msg.remove();
+        }
+        notificationTimeout = null;
+    }, 2500);
+    }// ========== ЛОГИКА СБОРА ==========
 function collectStick() {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -578,13 +766,38 @@ function collectStick() {
         if (index !== -1) {
             scene.remove(sticks[index]);
             sticks.splice(index, 1);
-            inventory.wood += 1;
-            updateInventory();
-            showMessage('🪵 +1 древесина (палка)');
             
-            if (inventory.wood >= WOOD_FOR_AXE && !hasAxe) {
-                showMessage(`🔨 Теперь нажми 🪓 чтобы создать топор!`);
+            // Добавляем в инвентарь
+            addToInventory('stick', 'Палка', '🥢', 1);
+            updateHotbar();
+            showMessage('🥢 +1 палка');
+            
+            // Проверяем, можно ли создать топор
+            const stickCount = inventory.slots[0] ? inventory.slots[0].count : 0;
+            if (stickCount >= WOOD_FOR_AXE && !hasAxe) {
+                showMessage(`🔨 Собери ${WOOD_FOR_AXE} палок и нажми ⚔️ чтобы создать топор!`);
             }
+            return true;
+        }
+    }
+    return false;
+}
+
+function collectLogs() {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const intersects = raycaster.intersectObjects(treeLogs);
+    
+    if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        const index = treeLogs.indexOf(hit);
+        if (index !== -1) {
+            scene.remove(treeLogs[index]);
+            treeLogs.splice(index, 1);
+            
+            addToInventory('log', 'Бревно', '🪵', 1);
+            updateHotbar();
+            showMessage('🪵 +1 бревно');
             return true;
         }
     }
@@ -595,21 +808,28 @@ function collectStick() {
 function startChopping() {
     if (isChopping) return;
     
-    if (!hasAxe) {
-        if (inventory.wood >= WOOD_FOR_AXE) {
-            inventory.wood -= WOOD_FOR_AXE;
+    // Проверяем, есть ли топор в инвентаре
+    const axeSlot = inventory.slots.find(s => s && s.id === 'axe');
+    const hasAxeInInventory = axeSlot && axeSlot.count > 0;
+    
+    if (!hasAxeInInventory) {
+        // Пробуем создать топор из палок
+        const stickSlot = inventory.slots[0];
+        if (stickSlot && stickSlot.count >= WOOD_FOR_AXE) {
+            // Забираем палки
+            stickSlot.count -= WOOD_FOR_AXE;
+            // Добавляем топор
+            addToInventory('axe', 'Топор', '🪓', 1);
             hasAxe = true;
-            updateInventory();
-            document.getElementById('axeStatus').textContent = '🪓 Есть топор!';
-            document.getElementById('axeStatus').style.color = '#ffd700';
-            showMessage('✅ Топор создан! Теперь руби деревья!');
+            updateHotbar();
+            showMessage('🪓 Топор создан! Теперь руби деревья!');
         } else {
-            showMessage(`🔨 Собери ${WOOD_FOR_AXE} древесины с земли (палки), чтобы создать топор`);
-            showMessage('🔍 Ищи палки на земле и нажимай на них');
+            showMessage(`🔨 Нужно ${WOOD_FOR_AXE} палок для топора (собирай палки с земли)`);
         }
         return;
     }
     
+    // Ищем дерево
     let nearest = null;
     let nearestDist = Infinity;
     for (const tree of trees) {
@@ -630,7 +850,6 @@ function startChopping() {
     chopProgress = 0;
     progressDiv.style.display = 'block';
     progressFill.style.width = '0%';
-    document.getElementById('axeStatus').textContent = '🪓 Рубка...';
 }
 
 function updateChopping() {
@@ -652,7 +871,6 @@ function updateChopping() {
 function finishChopping() {
     isChopping = false;
     progressDiv.style.display = 'none';
-    document.getElementById('axeStatus').textContent = '🪓 Готово!';
     
     if (targetTree) {
         const treePos = targetTree.position.clone();
@@ -660,7 +878,9 @@ function finishChopping() {
         const index = trees.indexOf(targetTree);
         if (index !== -1) trees.splice(index, 1);
         
-        for (let i = 0; i < 3 + Math.floor(Math.random() * 2); i++) {
+        // Создаём брёвна
+        const logCount = 2 + Math.floor(Math.random() * 3);
+        for (let i = 0; i < logCount; i++) {
             const log = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.05, 0.07, 0.2 + Math.random()*0.2, 5),
                 new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.9 })
@@ -676,9 +896,7 @@ function finishChopping() {
             treeLogs.push(log);
         }
         
-        inventory.logs += 3 + Math.floor(Math.random() * 2);
-        updateInventory();
-        showMessage('🪵 Брёвна собраны!');
+        showMessage(`🪵 Дерево срублено! Собери брёвна с земли`);
     }
     
     targetTree = null;
@@ -687,52 +905,21 @@ function finishChopping() {
     rightArm.rotation.z = -0.3;
 }
 
-function collectLogs() {
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-    const intersects = raycaster.intersectObjects(treeLogs);
-    
-    if (intersects.length > 0) {
-        const hit = intersects[0].object;
-        const index = treeLogs.indexOf(hit);
-        if (index !== -1) {
-            scene.remove(treeLogs[index]);
-            treeLogs.splice(index, 1);
-            inventory.wood += 1;
-            updateInventory();
-            showMessage('🪵 +1 древесина');
-        }
-    }
-}
-
-// ========== UI ==========
-function updateInventory() {
-    document.getElementById('woodCount').textContent = inventory.wood;
-    document.getElementById('logCount').textContent = inventory.logs;
-}
-
-function showMessage(text) {
-    const msg = document.createElement('div');
-    msg.className = 'notification';
-    msg.textContent = text;
-    document.body.appendChild(msg);
-    setTimeout(() => msg.remove(), 2500);
-}
-
-// ========== ОБРАБОТЧИКИ ==========
-chopBtn.addEventListener('touchstart', (e) => {
+// ========== ОБРАБОТЧИКИ КНОПОК ==========
+actionBtn.addEventListener('touchstart', (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (!isChopping) startChopping();
 });
 
-chopBtn.addEventListener('click', (e) => {
+actionBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     if (!isChopping) startChopping();
 });
 
+// Сбор предметов по тапу
 document.addEventListener('click', (e) => {
-    if (e.target === chopBtn || e.target === joystick || e.target === knob) return;
+    if (e.target === actionBtn || e.target === joystick || e.target === knob || e.target === viewBtn) return;
     if (!isChopping) {
         if (!collectStick()) {
             collectLogs();
@@ -742,14 +929,12 @@ document.addEventListener('click', (e) => {
 
 // ========== ПЕРЕКЛЮЧЕНИЕ ВИДА ==========
 let isFirstPerson = true;
-document.addEventListener('dblclick', toggleCameraView);
 
-let lastTap = 0;
-document.addEventListener('touchstart', (e) => {
-    if (e.target === chopBtn || e.target === joystick || e.target === knob) return;
-    const now = Date.now();
-    if (now - lastTap < 300) toggleCameraView();
-    lastTap = now;
+viewBtn.addEventListener('click', toggleCameraView);
+viewBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleCameraView();
 });
 
 function toggleCameraView() {
@@ -758,11 +943,13 @@ function toggleCameraView() {
         camera.position.set(0, 0.6, 0);
         camera.fov = 70;
         playerGroup.visible = false;
+        viewBtn.textContent = '👤';
         showMessage('👁️ Вид от первого лица');
     } else {
         camera.position.set(0, 1.2, 2.5);
         camera.fov = 50;
         playerGroup.visible = true;
+        viewBtn.textContent = '👁️';
         showMessage('👤 Вид от третьего лица');
     }
     camera.updateProjectionMatrix();
@@ -869,4 +1056,6 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-showMessage('🌴 Собирай палки с земли (нажимай на них) чтобы создать топор!');
+// ========== СТАРТ ==========
+updateHotbar();
+showMessage('🌴 Собирай палки с земли (нажимай на них)');
