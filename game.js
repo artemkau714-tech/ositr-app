@@ -424,3 +424,449 @@ progressFill.style.cssText = `
 `;
 progressDiv.appendChild(progressFill);
 document.body.appendChild(progressDiv);
+// ========== УПРАВЛЕНИЕ ==========
+let moveX = 0, moveZ = 0;
+let pitch = -0.1, yaw = 0;
+let isLooking = false;
+
+// --- Джойстик ---
+const joystick = document.createElement('div');
+joystick.style.cssText = `
+    position: fixed;
+    bottom: 30px;
+    left: 30px;
+    width: 120px;
+    height: 120px;
+    border-radius: 60px;
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.25);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    touch-action: none;
+`;
+document.body.appendChild(joystick);
+
+const knob = document.createElement('div');
+knob.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 50px;
+    height: 50px;
+    border-radius: 25px;
+    background: radial-gradient(circle, rgba(255,255,255,0.5), rgba(255,255,255,0.2));
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+`;
+joystick.appendChild(knob);
+
+// --- Кнопка рубки ---
+const chopBtn = document.createElement('div');
+chopBtn.style.cssText = `
+    position: fixed;
+    bottom: 40px;
+    right: 30px;
+    width: 80px;
+    height: 80px;
+    border-radius: 40px;
+    background: rgba(255, 200, 0, 0.25);
+    border: 3px solid #ffd700;
+    color: #ffd700;
+    font-size: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    user-select: none;
+    touch-action: none;
+    backdrop-filter: blur(4px);
+    box-shadow: 0 0 30px rgba(255,215,0,0.1);
+`;
+chopBtn.textContent = '🪓';
+document.body.appendChild(chopBtn);
+
+// ========== ОБРАБОТКА ДЖОЙСТИКА ==========
+joystick.addEventListener('touchstart', handleJoystick);
+joystick.addEventListener('touchmove', handleJoystick);
+joystick.addEventListener('touchend', () => {
+    moveX = 0;
+    moveZ = 0;
+    knob.style.transform = 'translate(-50%, -50%)';
+});
+
+function handleJoystick(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    if (!touch) return;
+    const rect = joystick.getBoundingClientRect();
+    const cx = rect.left + rect.width/2;
+    const cy = rect.top + rect.height/2;
+    const dx = touch.clientX - cx;
+    const dy = touch.clientY - cy;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const maxDist = rect.width/2 - 25;
+    
+    const normalizedDy = -dy;
+    
+    if (dist > maxDist) {
+        moveX = (dx/dist) * 0.8;
+        moveZ = (normalizedDy/dist) * 0.8;
+    } else {
+        moveX = dx/maxDist * 0.8;
+        moveZ = normalizedDy/maxDist * 0.8;
+    }
+    knob.style.transform = `translate(calc(-50% + ${moveX*50}px), calc(-50% + ${-moveZ*50}px))`;
+}
+
+// ========== ПОВОРОТ КАМЕРЫ ==========
+let touchStartX = 0, touchStartY = 0;
+
+document.addEventListener('touchstart', (e) => {
+    if (e.target === joystick || e.target === chopBtn || e.target === knob) return;
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    isLooking = true;
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+    if (e.target === joystick || e.target === chopBtn || e.target === knob) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const dx = touch.clientX - touchStartX;
+    const dy = touch.clientY - touchStartY;
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    yaw -= dx * 0.005;
+    pitch -= dy * 0.005;
+    pitch = Math.max(-0.8, Math.min(0.8, pitch));
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+    isLooking = false;
+});
+
+// ========== ПАЛКИ НА ЗЕМЛЕ ==========
+const sticks = [];
+for (let i = 0; i < 25; i++) {
+    const stick = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.01, 0.015, 0.1 + Math.random() * 0.1, 4),
+        new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.9 })
+    );
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 0.5 + Math.random() * 4.5;
+    stick.position.set(
+        Math.cos(angle) * radius,
+        0.02,
+        Math.sin(angle) * radius
+    );
+    stick.rotation.x = Math.random() * 0.5;
+    stick.rotation.z = Math.random() * 0.5;
+    stick.castShadow = true;
+    scene.add(stick);
+    sticks.push(stick);
+}
+
+function collectStick() {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const intersects = raycaster.intersectObjects(sticks);
+    
+    if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        const index = sticks.indexOf(hit);
+        if (index !== -1) {
+            scene.remove(sticks[index]);
+            sticks.splice(index, 1);
+            inventory.wood += 1;
+            updateInventory();
+            showMessage('🪵 +1 древесина (палка)');
+            
+            if (inventory.wood >= WOOD_FOR_AXE && !hasAxe) {
+                showMessage(`🔨 Теперь нажми 🪓 чтобы создать топор!`);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+// ========== РУБКА ==========
+function startChopping() {
+    if (isChopping) return;
+    
+    if (!hasAxe) {
+        if (inventory.wood >= WOOD_FOR_AXE) {
+            inventory.wood -= WOOD_FOR_AXE;
+            hasAxe = true;
+            updateInventory();
+            document.getElementById('axeStatus').textContent = '🪓 Есть топор!';
+            document.getElementById('axeStatus').style.color = '#ffd700';
+            showMessage('✅ Топор создан! Теперь руби деревья!');
+        } else {
+            showMessage(`🔨 Собери ${WOOD_FOR_AXE} древесины с земли (палки), чтобы создать топор`);
+            showMessage('🔍 Ищи палки на земле и нажимай на них');
+        }
+        return;
+    }
+    
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const tree of trees) {
+        const dist = camera.position.distanceTo(tree.position);
+        if (dist < nearestDist && dist < 4) {
+            nearestDist = dist;
+            nearest = tree;
+        }
+    }
+    
+    if (!nearest) {
+        showMessage('🌴 Подойди ближе к дереву!');
+        return;
+    }
+    
+    targetTree = nearest;
+    isChopping = true;
+    chopProgress = 0;
+    progressDiv.style.display = 'block';
+    progressFill.style.width = '0%';
+    document.getElementById('axeStatus').textContent = '🪓 Рубка...';
+}
+
+function updateChopping() {
+    if (!isChopping || !targetTree) return;
+    
+    chopProgress += 0.02;
+    progressFill.style.width = `${Math.min(chopProgress * 100, 100)}%`;
+    
+    const swingAngle = Math.sin(chopProgress * 30) * 0.8;
+    axeGroup.rotation.x = -0.5 + swingAngle;
+    axeGroup.rotation.z = -0.5 + swingAngle * 0.3;
+    rightArm.rotation.z = -0.3 + swingAngle * 0.5;
+    
+    if (chopProgress >= 1) {
+        finishChopping();
+    }
+}
+
+function finishChopping() {
+    isChopping = false;
+    progressDiv.style.display = 'none';
+    document.getElementById('axeStatus').textContent = '🪓 Готово!';
+    
+    if (targetTree) {
+        const treePos = targetTree.position.clone();
+        scene.remove(targetTree);
+        const index = trees.indexOf(targetTree);
+        if (index !== -1) trees.splice(index, 1);
+        
+        for (let i = 0; i < 3 + Math.floor(Math.random() * 2); i++) {
+            const log = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.05, 0.07, 0.2 + Math.random()*0.2, 5),
+                new THREE.MeshStandardMaterial({ color: 0x8B5A2B, roughness: 0.9 })
+            );
+            log.position.copy(treePos);
+            log.position.x += (Math.random() - 0.5) * 0.4;
+            log.position.z += (Math.random() - 0.5) * 0.4;
+            log.position.y = 0.1 + Math.random() * 0.1;
+            log.rotation.x = Math.random() * 0.5;
+            log.rotation.z = Math.random() * 0.5;
+            log.castShadow = true;
+            scene.add(log);
+            treeLogs.push(log);
+        }
+        
+        inventory.logs += 3 + Math.floor(Math.random() * 2);
+        updateInventory();
+        showMessage('🪵 Брёвна собраны!');
+    }
+    
+    targetTree = null;
+    axeGroup.rotation.x = -0.5;
+    axeGroup.rotation.z = -0.5;
+    rightArm.rotation.z = -0.3;
+}
+
+function collectLogs() {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+    const intersects = raycaster.intersectObjects(treeLogs);
+    
+    if (intersects.length > 0) {
+        const hit = intersects[0].object;
+        const index = treeLogs.indexOf(hit);
+        if (index !== -1) {
+            scene.remove(treeLogs[index]);
+            treeLogs.splice(index, 1);
+            inventory.wood += 1;
+            updateInventory();
+            showMessage('🪵 +1 древесина');
+        }
+    }
+}
+
+// ========== UI ==========
+function updateInventory() {
+    document.getElementById('woodCount').textContent = inventory.wood;
+    document.getElementById('logCount').textContent = inventory.logs;
+}
+
+function showMessage(text) {
+    const msg = document.createElement('div');
+    msg.className = 'notification';
+    msg.textContent = text;
+    document.body.appendChild(msg);
+    setTimeout(() => msg.remove(), 2500);
+}
+
+// ========== ОБРАБОТЧИКИ ==========
+chopBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isChopping) startChopping();
+});
+
+chopBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!isChopping) startChopping();
+});
+
+document.addEventListener('click', (e) => {
+    if (e.target === chopBtn || e.target === joystick || e.target === knob) return;
+    if (!isChopping) {
+        if (!collectStick()) {
+            collectLogs();
+        }
+    }
+});
+
+// ========== ПЕРЕКЛЮЧЕНИЕ ВИДА ==========
+let isFirstPerson = true;
+document.addEventListener('dblclick', toggleCameraView);
+
+let lastTap = 0;
+document.addEventListener('touchstart', (e) => {
+    if (e.target === chopBtn || e.target === joystick || e.target === knob) return;
+    const now = Date.now();
+    if (now - lastTap < 300) toggleCameraView();
+    lastTap = now;
+});
+
+function toggleCameraView() {
+    isFirstPerson = !isFirstPerson;
+    if (isFirstPerson) {
+        camera.position.set(0, 0.6, 0);
+        camera.fov = 70;
+        playerGroup.visible = false;
+        showMessage('👁️ Вид от первого лица');
+    } else {
+        camera.position.set(0, 1.2, 2.5);
+        camera.fov = 50;
+        playerGroup.visible = true;
+        showMessage('👤 Вид от третьего лица');
+    }
+    camera.updateProjectionMatrix();
+}
+
+playerGroup.visible = false;
+
+// ========== АНИМАЦИЯ ПРИРОДЫ ==========
+function animateNature(time) {
+    for (const blade of grassBlades) {
+        const wind = Math.sin(time * 0.001 * blade.userData.speed + blade.userData.phase) * 0.08;
+        blade.rotation.x = blade.userData.baseRot + wind;
+        blade.rotation.z = Math.sin(time * 0.0008 * blade.userData.speed + blade.userData.phase) * 0.05;
+    }
+    
+    for (const butterfly of butterflies) {
+        const data = butterfly.userData;
+        data.angle += 0.005 * data.speed;
+        const x = Math.cos(data.angle) * data.radius;
+        const z = Math.sin(data.angle) * data.radius;
+        const y = 0.4 + Math.sin(time * 0.001 * data.flapSpeed + data.heightOffset) * 0.3 + 0.3;
+        butterfly.position.set(x, y, z);
+        butterfly.rotation.y = -data.angle + Math.PI / 2;
+        
+        const wingAngle = Math.sin(time * 0.005 * data.flapSpeed + data.heightOffset) * 0.5;
+        butterfly.children.forEach(child => {
+            if (child.geometry && child.geometry.type === 'PlaneGeometry') {
+                child.rotation.z = wingAngle * (child.position.x < 0 ? 1 : -1);
+            }
+        });
+    }
+    
+    for (const bird of birds) {
+        const data = bird.userData;
+        data.angle += 0.003 * data.speed;
+        const x = Math.cos(data.angle) * data.circleRadius;
+        const z = Math.sin(data.angle) * data.circleRadius;
+        const y = 2 + Math.sin(time * 0.0008 * data.flapSpeed + data.heightOffset) * 1 + 1;
+        bird.position.set(x, y, z);
+        bird.rotation.y = -data.angle + Math.PI / 2;
+        
+        const wingAngle = Math.sin(time * 0.008 * data.flapSpeed + data.heightOffset) * 0.8;
+        bird.children.forEach(child => {
+            if (child.geometry && child.geometry.type === 'PlaneGeometry') {
+                child.rotation.z = wingAngle * (child.position.x < 0 ? 1 : -1);
+            }
+        });
+    }
+}
+
+// ========== ОСНОВНОЙ ЦИКЛ ==========
+function animate(time) {
+    requestAnimationFrame(animate);
+    
+    animateNature(time);
+    
+    if (moveX !== 0 || moveZ !== 0) {
+        const forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+        const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+        const speed = 0.04;
+        
+        const moveVec = new THREE.Vector3()
+            .addScaledVector(forward, moveZ * speed)
+            .addScaledVector(right, moveX * speed);
+        
+        camera.position.add(moveVec);
+        playerGroup.position.copy(camera.position);
+        playerGroup.position.y = -0.1;
+        
+        if (moveVec.length() > 0.001) {
+            const targetAngle = Math.atan2(moveVec.x, moveVec.z);
+            playerGroup.rotation.y = targetAngle;
+        }
+    }
+    
+    if (isChopping) updateChopping();
+    
+    const dist = Math.sqrt(camera.position.x**2 + camera.position.z**2);
+    if (dist > 5.5) {
+        camera.position.x = (camera.position.x/dist) * 5.5;
+        camera.position.z = (camera.position.z/dist) * 5.5;
+        playerGroup.position.copy(camera.position);
+        playerGroup.position.y = -0.1;
+    }
+    
+    const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
+    camera.quaternion.setFromEuler(euler);
+    
+    if (!isFirstPerson) {
+        const offset = new THREE.Vector3(0, 0.6, 0);
+        const targetPos = playerGroup.position.clone().add(offset);
+        camera.position.lerp(targetPos, 0.1);
+        camera.lookAt(playerGroup.position.clone().add(new THREE.Vector3(0, 0.3, 0)));
+    }
+    
+    renderer.render(scene, camera);
+}
+animate(0);
+
+// ========== АДАПТАЦИЯ ==========
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+showMessage('🌴 Собирай палки с земли (нажимай на них) чтобы создать топор!');
