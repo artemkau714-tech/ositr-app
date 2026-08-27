@@ -23,24 +23,25 @@
             user-select: none;
         }
         
-        /* Верхний HUD (только заголовок, счётчики теперь в инвентаре внизу) */
+        /* Верхний HUD */
         #hud {
             position: absolute;
-            top: 20px;
+            top: 15px;
             left: 50%;
             transform: translateX(-50%);
             color: #ffffff;
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.5);
             backdrop-filter: blur(8px);
-            padding: 8px 20px;
+            padding: 6px 20px;
             border-radius: 30px;
             border: 1px solid rgba(255, 255, 255, 0.1);
             z-index: 100;
             user-select: none;
             pointer-events: none;
-            font-size: 16px;
+            font-size: 14px;
             letter-spacing: 2px;
             text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            white-space: nowrap;
         }
         
         /* Прицел */
@@ -49,44 +50,19 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: rgba(255, 255, 255, 0.6);
-            font-size: 30px;
+            color: rgba(255, 255, 255, 0.4);
+            font-size: 28px;
             font-weight: 100;
             z-index: 100;
             text-shadow: 0 0 15px rgba(0, 0, 0, 0.8);
             pointer-events: none;
             user-select: none;
             font-family: 'Courier New', monospace;
-            opacity: 0.5;
         }
         
         #crosshair::before {
             content: '+';
             display: block;
-        }
-        
-        /* Подсказка управления (скрыта, так как теперь всё интуитивно) */
-        #hint {
-            display: none;
-        }
-        
-        /* Инвентарь создаётся в JS, но добавим базовые стили */
-        .inventory-item {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        /* Адаптивность */
-        @media (max-width: 600px) {
-            #hud {
-                top: 10px;
-                font-size: 12px;
-                padding: 5px 15px;
-            }
-            #crosshair {
-                font-size: 22px;
-            }
         }
         
         /* Стили для уведомлений (создаются в JS) */
@@ -105,15 +81,49 @@
             font-family: 'Segoe UI', sans-serif;
             border: 2px solid rgba(255, 215, 0, 0.3);
             text-align: center;
-            max-width: 80%;
+            max-width: 85%;
             animation: fadeOut 2.5s forwards;
             backdrop-filter: blur(4px);
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
         }
         
         @keyframes fadeOut {
             0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             70% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
             100% { opacity: 0; transform: translate(-50%, -60%) scale(0.95); }
+        }
+        
+        /* Адаптивность */
+        @media (max-width: 600px) {
+            #hud {
+                top: 10px;
+                font-size: 10px;
+                padding: 4px 12px;
+                letter-spacing: 1px;
+            }
+            #crosshair {
+                font-size: 20px;
+            }
+            .notification {
+                font-size: 14px;
+                padding: 12px 20px;
+                max-width: 90%;
+            }
+        }
+        
+        /* Стили для инвентаря (добавляются в JS, но зарезервируем) */
+        .inv-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+            font-size: 14px;
+        }
+        
+        @media (max-width: 500px) {
+            .inv-item {
+                font-size: 11px;
+            }
         }
     </style>
 </head>
@@ -123,9 +133,6 @@
     
     <!-- Прицел -->
     <div id="crosshair"></div>
-    
-    <!-- Подсказка (скрыта) -->
-    <div id="hint"></div>
 
     <!-- Подключаем Three.js -->
     <script type="importmap">
@@ -139,4 +146,4 @@
     <!-- Основной код игры -->
     <script type="module" src="game.js"></script>
 </body>
-    </html>
+        </html>
