@@ -1,0 +1,1140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="screen-orientation" content="landscape">
+<meta name="x5-orientation" content="landscape">
+<meta name="full-screen" content="yes">
+<meta name="x5-fullscreen" content="true">
+<title>Выживание от БПЛА</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    overflow:hidden; background:#000;
+    font-family: 'Segoe UI', 'Roboto', system-ui, sans-serif;
+    touch-action:none; user-select:none; -webkit-user-select:none;
+  }
+  canvas { display:block; }
+
+  /* Скрытие HUD до старта игры */
+  #hud, #hpbar, #ammo, #reloading, #crosshair, #alert,
+  #record, #shopBtn, #pauseBtn, #inventoryBtn,
+  #btnRocket, #btnFlyUp, #btnFlyDown {
+    display: none;
+  }
+  #mobileControls { display: none; }
+
+  body.playing #hud { display: block !important; }
+  body.playing #hpbar { display: block !important; }
+  body.playing #ammo { display: block !important; }
+  body.playing #crosshair { display: block !important; }
+  body.playing #record { display: block !important; }
+  body.playing #shopBtn { display: block !important; }
+  body.playing #pauseBtn { display: block !important; }
+  body.playing #inventoryBtn { display: block !important; }
+
+  body.playing.is-touch #mobileControls { display: block !important; }
+  body.playing #btnRocket.show { display: flex !important; }
+  body.playing #btnFlyUp.show { display: flex !important; }
+  body.playing #btnFlyDown.show { display: flex !important; }
+
+  /* HUD */
+  #hud {
+    position:fixed; top:10px; left:10px; color:#0f0;
+    text-shadow:0 0 5px #0f0; font-size:12px; pointer-events:none; z-index:5;
+    line-height:1.5;
+  }
+  #hud .money { color:#ffd700; text-shadow:0 0 6px #ffd700; }
+  #hud .weapon { color:#0ff; text-shadow:0 0 6px #0ff; }
+  #hud .vehicle { color:#f0f; text-shadow:0 0 6px #f0f; }
+  #hud .hero { color:#f80; text-shadow:0 0 6px #f80; }
+  #hud .enemies { color:#f44; text-shadow:0 0 6px #f44; }
+
+  #hpbar {
+    position:fixed; top:10px; right:10px;
+    width:140px; height:14px; border:2px solid #0f0;
+    background:rgba(0,0,0,.6); z-index:5; border-radius:3px; overflow:hidden;
+  }
+  #hpfill { height:100%; width:100%; background:#0f0; transition:width .15s; }
+
+  #ammo {
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%);
+    z-index:5; pointer-events:none; text-align:center;
+    font-family:'Courier New', monospace;
+    background:rgba(0,0,0,.6); border:2px solid #ff0;
+    border-radius:8px; padding:4px 14px;
+    box-shadow:0 0 12px rgba(255,255,0,.5); min-width:130px;
+  }
+  .ammo-label { display:block; color:#ff0; font-size:10px; letter-spacing:2px; }
+  .ammo-count { display:block; color:#fff; font-size:20px; font-weight:bold; }
+  #ammo.low .ammo-count { color:#f00; }
+
+  #reloading {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    color:#ff0; font-size:22px; font-weight:bold;
+    text-shadow:0 0 10px #ff0; z-index:5;
+  }
+
+  #crosshair {
+    position:fixed; top:50%; left:50%; width:24px; height:24px;
+    margin:-12px 0 0 -12px; pointer-events:none; z-index:5;
+  }
+  #crosshair::before, #crosshair::after {
+    content:''; position:absolute; background:#0f0; box-shadow:0 0 4px #0f0;
+  }
+  #crosshair::before { left:11px; top:0; width:2px; height:24px; }
+  #crosshair::after { top:11px; left:0; height:2px; width:24px; }
+
+  #damageFlash {
+    position:fixed; inset:0; background:radial-gradient(circle, transparent 40%, rgba(255,0,0,.6) 100%);
+    pointer-events:none; opacity:0; transition:opacity .2s; z-index:4;
+  }
+
+  #alert {
+    position:fixed; top:60px; left:50%; transform:translateX(-50%);
+    color:#f00; font-size:18px; font-weight:bold;
+    text-shadow:0 0 10px #f00; z-index:5;
+    pointer-events:none;
+  }
+
+  #hint {
+    position:fixed; bottom:80px; left:50%; transform:translateX(-50%);
+    color:#ffd700; font-size:15px; font-weight:bold;
+    background:rgba(0,0,0,.8);
+    padding:8px 16px; border-radius:8px; border:2px solid #ffd700;
+    z-index:5; pointer-events:none; display:none;
+  }
+
+  #record {
+    position:fixed; bottom:10px; right:10px; color:#ff0;
+    font-size:11px; z-index:5; pointer-events:none;
+  }
+
+  /* ОВЕРЛЕЙ ПОВОРОТА */
+  #rotateOverlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: linear-gradient(135deg, #0a1f0a, #052840);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #0f0;
+    text-align: center;
+    padding: 20px;
+    font-family: 'Courier New', monospace;
+  }
+  #rotateOverlay.show { display: flex; }
+  #rotateOverlay .phone-icon {
+    font-size: clamp(60px, 15vw, 100px);
+    margin-bottom: 20px;
+    animation: rotatePhone 2s ease-in-out infinite;
+  }
+  @keyframes rotatePhone {
+    0%, 40% { transform: rotate(0deg); }
+    60%, 100% { transform: rotate(-90deg); }
+  }
+  #rotateOverlay h2 {
+    font-size: clamp(20px, 4vw, 32px);
+    color: #0f0;
+    text-shadow: 0 0 15px #0f0;
+    margin-bottom: 12px;
+    letter-spacing: 3px;
+  }
+  #rotateOverlay p {
+    font-size: clamp(12px, 2vw, 16px);
+    color: #8f8;
+    line-height: 1.6;
+  }
+
+  /* ГЛАВНОЕ МЕНЮ MINECRAFT */
+  #mainMenu {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    background: linear-gradient(135deg, #0a1f0a 0%, #052840 50%, #1a0a2e 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: max(2vh, 12px) max(2vw, 12px);
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+  }
+
+  #mainMenu::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0,0,0,0.08) 0px,
+      rgba(0,0,0,0.08) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .mc-logo {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: min(3vh, 24px);
+    width: 90%;
+    max-width: 600px;
+  }
+
+  .mc-logo h1 {
+    font-size: clamp(28px, 7vw, 72px);
+    color: #ffffff;
+    font-weight: 900;
+    font-family: 'Impact', 'Arial Black', 'Courier New', monospace;
+    letter-spacing: clamp(2px, 0.5vw, 8px);
+    margin-bottom: 0;
+    line-height: 1;
+    background: linear-gradient(180deg, #a4e86b 0%, #7dc745 45%, #5fa832 55%, #3d7a20 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(3px 3px 0 #1a1a1a) drop-shadow(6px 6px 0 #0a0a0a);
+    transform: rotate(-2deg);
+    -webkit-text-stroke: 2px #2a3a1a;
+  }
+
+  .mc-logo .subtitle {
+    color: #ffdd44;
+    font-size: clamp(8px, 1.3vw, 14px);
+    letter-spacing: clamp(1px, 0.3vw, 4px);
+    text-shadow: 2px 2px 0 #3a2a0a;
+    margin-top: min(1vh, 6px);
+    font-weight: bold;
+    font-style: italic;
+    transform: rotate(-2deg);
+  }
+
+  .mc-logo .splash {
+    color: #ffff44;
+    font-size: clamp(9px, 1.5vw, 16px);
+    font-weight: bold;
+    text-shadow: 2px 2px 0 #3a3a0a;
+    margin-top: min(1vh, 8px);
+    animation: mcSplash 1s ease-in-out infinite alternate;
+    transform-origin: center;
+    font-style: italic;
+  }
+
+  @keyframes mcSplash {
+    0%   { transform: scale(1) rotate(-15deg); }
+    100% { transform: scale(1.1) rotate(-15deg); }
+  }
+
+  .hero-picker {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    gap: clamp(8px, 1.5vw, 16px);
+    margin-bottom: min(2vh, 16px);
+    justify-content: center;
+    flex-wrap: wrap;
+    width: 90%;
+    max-width: 500px;
+  }
+
+  .hero-card {
+    flex: 1 1 clamp(100px, 30%, 160px);
+    max-width: 160px;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    padding: clamp(6px, 1.2vh, 12px) clamp(6px, 1vw, 12px);
+    cursor: pointer;
+    transition: all 0.1s;
+    position: relative;
+  }
+
+  .hero-card.selected {
+    background: linear-gradient(180deg, #7bc74d 0%, #5a9f2e 100%);
+    border-top-color: #a4e86b;
+    border-left-color: #a4e86b;
+    box-shadow: 0 0 20px rgba(120, 200, 70, 0.8);
+    transform: scale(1.03);
+  }
+
+  .hero-card .avatar {
+    font-size: clamp(24px, 4vw, 40px);
+    margin-bottom: min(0.5vh, 4px);
+    filter: drop-shadow(2px 2px 0 #1a1a1a);
+  }
+
+  .hero-card .name {
+    color: #ffffff;
+    font-size: clamp(11px, 1.8vw, 16px);
+    font-weight: bold;
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #1a1a1a;
+  }
+
+  .hero-card .desc {
+    color: #e0e0e0;
+    font-size: clamp(8px, 1.2vw, 11px);
+    margin-top: min(0.5vh, 4px);
+    line-height: 1.3;
+    text-shadow: 1px 1px 0 #1a1a1a;
+  }
+
+  #mainMenu .menu-btn {
+    position: relative;
+    z-index: 2;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    padding: clamp(8px, 1.5vh, 14px) clamp(20px, 5vw, 60px);
+    margin: clamp(2px, 0.5vh, 5px) 0;
+    color: #ffffff;
+    font-size: clamp(12px, 1.8vw, 18px);
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+    cursor: pointer;
+    width: min(90%, 420px);
+    min-width: 200px;
+    transition: all 0.05s;
+    text-shadow: 2px 2px 0 #1a1a1a;
+    box-shadow: 
+      0 4px 0 #0a0a0a,
+      0 6px 8px rgba(0,0,0,0.5);
+  }
+
+  #mainMenu .menu-btn:hover {
+    background: linear-gradient(180deg, #8a8a8a 0%, #6a6a6a 100%);
+    color: #ffff88;
+  }
+
+  #mainMenu .menu-btn:active {
+    transform: translateY(3px);
+    box-shadow: 
+      0 1px 0 #0a0a0a,
+      0 2px 4px rgba(0,0,0,0.5);
+    background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+  }
+
+  #mainMenu .menu-btn.secondary { color: #a4e8ff; }
+  #mainMenu .menu-btn.secondary:hover { color: #e0f8ff; }
+  #mainMenu .menu-btn.tertiary { color: #ffe888; }
+  #mainMenu .menu-btn.tertiary:hover { color: #fff4b8; }
+
+  #mainMenu #playBtn {
+    font-size: clamp(14px, 2.2vw, 22px);
+    padding: clamp(10px, 1.8vh, 18px) clamp(20px, 5vw, 60px);
+    background: linear-gradient(180deg, #7bc74d 0%, #4a9f20 100%);
+    border-top-color: #a4e86b;
+    border-left-color: #a4e86b;
+    color: #ffffff;
+    text-shadow: 2px 2px 0 #1a3a0a;
+  }
+
+  #mainMenu #playBtn:hover {
+    background: linear-gradient(180deg, #8fd85f 0%, #5aaf30 100%);
+    color: #ffff88;
+  }
+
+  #mainMenu .footer {
+    position: absolute;
+    bottom: clamp(6px, 1.5vh, 12px);
+    left: clamp(8px, 2vw, 16px);
+    right: clamp(8px, 2vw, 16px);
+    color: #ffffff;
+    font-size: clamp(8px, 1.2vw, 11px);
+    text-shadow: 1px 1px 0 #000;
+    text-align: left;
+    z-index: 2;
+    font-family: 'Courier New', monospace;
+    opacity: 0.85;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  #mainMenu .footer .left { text-align: left; }
+  #mainMenu .footer .right { text-align: right; }
+
+  #mainMenu .record-info {
+    position: relative;
+    z-index: 2;
+    color: #ffdd44;
+    font-size: clamp(10px, 1.4vw, 14px);
+    margin-top: min(1.5vh, 12px);
+    text-shadow: 2px 2px 0 #3a2a0a;
+    font-weight: bold;
+    letter-spacing: 1px;
+  }
+
+  @media (max-height: 500px) {
+    .mc-logo { margin-bottom: 6px; }
+    .mc-logo h1 { font-size: 24px; }
+    .hero-card { padding: 6px; }
+    .hero-card .avatar { font-size: 20px; margin-bottom: 2px; }
+    .hero-card .desc { display: none; }
+    #mainMenu .menu-btn { padding: 6px 20px; font-size: 11px; margin: 2px 0; }
+    #mainMenu #playBtn { padding: 8px 20px; font-size: 14px; }
+    #mainMenu .footer { font-size: 8px; }
+    #mainMenu .record-info { font-size: 10px; margin-top: 4px; }
+  }
+
+  @media (max-width: 380px) {
+    .hero-card .name { font-size: 10px; }
+    #mainMenu .menu-btn { font-size: 11px; letter-spacing: 1px; min-width: 160px; }
+  }
+
+  /* МОДАЛКИ */
+  .modal {
+    position:fixed; inset:0; z-index:110;
+    background:rgba(0,0,0,.9);
+    display:none; align-items:center; justify-content:center;
+    padding: max(2vh, 8px) max(2vw, 8px);
+  }
+  .modal.show { display:flex; }
+
+  .modal .box {
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    padding: clamp(14px, 2.5vh, 24px) clamp(12px, 3vw, 24px);
+    max-width: min(92vw, 500px);
+    width: 100%;
+    box-shadow: 0 6px 0 #0a0a0a, 0 8px 20px rgba(0,0,0,0.7);
+    color: #ffffff;
+    text-align: center;
+    max-height: 92vh;
+    overflow-y: auto;
+    font-family: 'Courier New', monospace;
+  }
+
+  .modal .box h2 {
+    color: #ffe888;
+    font-size: clamp(16px, 3vw, 22px);
+    margin-bottom: clamp(8px, 1.5vh, 14px);
+    letter-spacing: 2px;
+    text-shadow: 2px 2px 0 #1a1a1a;
+  }
+  .modal .box p {
+    color: #e0e0e0;
+    font-size: clamp(11px, 1.6vw, 14px);
+    line-height: 1.6;
+    margin-bottom: 10px;
+    text-shadow: 1px 1px 0 #1a1a1a;
+  }
+  .modal .box p.thanks {
+    color: #ffdd44;
+    font-size: clamp(12px, 1.8vw, 15px);
+    margin-top: 12px;
+    font-weight: bold;
+    text-shadow: 2px 2px 0 #3a2a0a;
+  }
+  .modal .box input {
+    width:100%; padding: clamp(8px, 1.5vh, 12px);
+    margin: clamp(8px, 1.5vh, 12px) 0 6px 0;
+    background: rgba(0,0,0,.5);
+    border: 3px solid #2a2a2a;
+    border-top-color: #1a1a1a;
+    border-left-color: #1a1a1a;
+    border-right-color: #4a4a4a;
+    border-bottom-color: #4a4a4a;
+    color: #ffffff;
+    font-size: clamp(12px, 1.8vw, 16px);
+    font-family: 'Courier New', monospace;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    outline: none;
+  }
+  .modal .box input:focus { border-color: #a4e86b; }
+  .modal .box button {
+    margin-top: clamp(6px, 1vh, 12px);
+    padding: clamp(7px, 1.2vh, 12px) clamp(16px, 4vw, 36px);
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    color: #ffffff;
+    font-size: clamp(11px, 1.6vw, 15px);
+    font-weight: bold;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 1px;
+    min-width: clamp(100px, 25vw, 140px);
+    text-shadow: 2px 2px 0 #1a1a1a;
+    box-shadow: 0 3px 0 #0a0a0a;
+    transition: all 0.05s;
+  }
+  .modal .box button:hover {
+    color: #ffff88;
+    background: linear-gradient(180deg, #8a8a8a 0%, #6a6a6a 100%);
+  }
+  .modal .box button:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #0a0a0a;
+  }
+  .modal .box button.cancel {
+    background: linear-gradient(180deg, #8a3a3a 0%, #5a2a2a 100%);
+    border-top-color: #b05050;
+    border-left-color: #b05050;
+    color: #ffcccc;
+    margin-left: 6px;
+  }
+  .modal .box .promo-status { min-height: 20px; font-size: 13px; margin-top: 6px; }
+  .modal .box .promo-status.ok { color: #a4e86b; text-shadow: 2px 2px 0 #1a1a1a; }
+  .modal .box .promo-status.err { color: #ff5555; text-shadow: 2px 2px 0 #1a1a1a; }
+
+  /* МЕНЮ ПАУЗЫ */
+  .modal .box.pause-box {
+    max-width: min(92vw, 380px);
+    padding: clamp(16px, 3vh, 28px) clamp(14px, 3vw, 24px);
+  }
+  .pause-menu-btn {
+    display: block;
+    width: 100%;
+    padding: clamp(10px, 1.8vh, 16px) clamp(16px, 4vw, 32px);
+    margin: clamp(6px, 1vh, 10px) 0;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    font-size: clamp(13px, 1.8vw, 16px);
+    font-weight: bold;
+    letter-spacing: 2px;
+    cursor: pointer;
+    text-shadow: 2px 2px 0 #1a1a1a;
+    box-shadow: 0 4px 0 #0a0a0a;
+    transition: all 0.05s;
+  }
+  .pause-menu-btn:active {
+    transform: translateY(3px);
+    box-shadow: 0 1px 0 #0a0a0a;
+    background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+  }
+  .pause-menu-btn:hover { color: #ffff88; }
+  .pause-menu-btn.danger {
+    background: linear-gradient(180deg, #8a3a3a 0%, #5a2a2a 100%);
+    border-top-color: #b05050;
+    border-left-color: #b05050;
+    color: #ffcccc;
+  }
+  .pause-menu-btn.danger:active {
+    background: linear-gradient(180deg, #4a2020 0%, #2a1010 100%);
+  }
+
+  /* НАСТРОЙКИ */
+  .modal .box.settings-box {
+    max-width: min(92vw, 520px);
+    padding: clamp(12px, 2vh, 20px) clamp(10px, 2.5vw, 20px);
+  }
+  .settings-presets {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: clamp(4px, 1vw, 8px);
+    margin-bottom: clamp(8px, 1.5vh, 14px);
+  }
+  .preset-btn {
+    padding: clamp(6px, 1.2vh, 10px) clamp(4px, 1vw, 8px);
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    font-size: clamp(10px, 1.5vw, 13px);
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #1a1a1a;
+    box-shadow: 0 3px 0 #0a0a0a;
+  }
+  .preset-btn.active {
+    background: linear-gradient(180deg, #7bc74d 0%, #4a9f20 100%);
+    color: #ffffff;
+    border-top-color: #a4e86b;
+    border-left-color: #a4e86b;
+  }
+  .preset-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #0a0a0a; }
+
+  .settings-list {
+    display: flex; flex-direction: column;
+    gap: clamp(6px, 1vh, 10px);
+    margin-bottom: clamp(8px, 1.5vh, 14px);
+    text-align: left;
+  }
+  .setting-row {
+    display: grid;
+    grid-template-columns: clamp(90px, 25%, 140px) 1fr clamp(36px, 8vw, 50px);
+    align-items: center;
+    gap: clamp(4px, 1vw, 10px);
+    padding: clamp(3px, 0.6vh, 6px) 0;
+    border-bottom: 1px solid rgba(255,255,255,.15);
+  }
+  .setting-row label {
+    color: #e0e0e0;
+    font-size: clamp(10px, 1.4vw, 12px);
+    font-family: 'Courier New', monospace;
+    text-shadow: 1px 1px 0 #1a1a1a;
+  }
+  .setting-row input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    background: rgba(0,0,0,.5);
+    border: 1px solid #2a2a2a;
+    outline: none;
+  }
+  .setting-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: clamp(14px, 3vw, 18px);
+    height: clamp(14px, 3vw, 18px);
+    background: linear-gradient(180deg, #a4e86b 0%, #5a9f2e 100%);
+    border: 2px solid #2a2a2a;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(120, 200, 70, 0.6);
+  }
+  .setting-row input[type="range"]::-moz-range-thumb {
+    width: clamp(14px, 3vw, 18px);
+    height: clamp(14px, 3vw, 18px);
+    background: linear-gradient(180deg, #a4e86b 0%, #5a9f2e 100%);
+    border: 2px solid #2a2a2a;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(120, 200, 70, 0.6);
+  }
+  .setting-row input[type="checkbox"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: clamp(32px, 6vw, 40px);
+    height: clamp(18px, 3.5vw, 22px);
+    background: rgba(0,0,0,.5);
+    border: 2px solid #2a2a2a;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .setting-row input[type="checkbox"]::before {
+    content: '';
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: clamp(12px, 2.5vw, 16px);
+    height: clamp(12px, 2.5vw, 16px);
+    background: #888;
+    transition: all 0.2s;
+  }
+  .setting-row input[type="checkbox"]:checked {
+    background: linear-gradient(180deg, #7bc74d 0%, #4a9f20 100%);
+    border-color: #a4e86b;
+  }
+  .setting-row input[type="checkbox"]:checked::before {
+    left: calc(100% - clamp(13px, 2.6vw, 17px));
+    background: #ffffff;
+  }
+  .setting-value {
+    color: #a4e86b;
+    font-size: clamp(10px, 1.4vw, 12px);
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    text-align: right;
+    text-shadow: 1px 1px 0 #1a1a1a;
+  }
+
+  /* Кнопки музыки */
+  .music-btn-row {
+    display: flex;
+    gap: clamp(6px, 1.5vw, 10px);
+    margin-top: clamp(4px, 0.8vh, 8px);
+  }
+  .music-btn {
+    flex: 1;
+    padding: clamp(7px, 1.2vh, 12px) clamp(8px, 2vw, 16px);
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    color: #ffffff;
+    font-family: 'Courier New', monospace;
+    font-size: clamp(11px, 1.6vw, 14px);
+    font-weight: bold;
+    cursor: pointer;
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #1a1a1a;
+    box-shadow: 0 3px 0 #0a0a0a;
+  }
+  .music-btn.active {
+    background: linear-gradient(180deg, #7bc74d 0%, #4a9f20 100%);
+    border-top-color: #a4e86b;
+    border-left-color: #a4e86b;
+  }
+  .music-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #0a0a0a; }
+
+  /* МАГАЗИН / ИНВЕНТАРЬ */
+  #shop, #inventory {
+    position:fixed; inset:0; background:rgba(0,0,0,.95);
+    z-index:20; display:none; overflow-y:auto;
+    color:#0f0; padding:16px; font-family:monospace;
+  }
+  #shop.open, #inventory.open { display:block; }
+  #shop h2, #inventory h2 {
+    text-align:center; color:#ffd700; font-size:20px;
+    text-shadow:0 0 10px #ffd700; margin-bottom:6px;
+  }
+  #shop .wallet {
+    text-align:center; color:#ffd700; font-size:16px; margin-bottom:12px;
+  }
+  #shop .tabs, #inventory .inv-tabs {
+    display:flex; justify-content:center; gap:6px; margin-bottom:14px; flex-wrap: wrap;
+  }
+  #shop .tab, #inventory .inv-tab {
+    padding:7px 12px; background:rgba(0,255,0,.1);
+    border:2px solid #0f0; color:#0f0; cursor:pointer;
+    font-weight:bold; border-radius:6px; font-family:monospace; font-size:11px;
+  }
+  #shop .tab.active, #inventory .inv-tab.active { background:#0f0; color:#000; }
+  #shop .items, #inventory .items {
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+    gap:8px; max-width:900px; margin:0 auto;
+  }
+  #shop .item, #inventory .item {
+    background:rgba(0,255,0,.05); border:2px solid #0f0;
+    border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:4px;
+  }
+  #shop .item.owned, #inventory .item.owned { border-color:#ffd700; background:rgba(255,215,0,.08); }
+  #shop .item.equipped, #inventory .item.equipped {
+    border-color:#00ffff; background:rgba(0,255,255,.12);
+    box-shadow: 0 0 15px rgba(0,255,255,.4);
+  }
+  #shop .item h3, #inventory .item h3 { color:#0ff; font-size:13px; margin-bottom:2px; }
+  #shop .item .stats, #inventory .item .stats { font-size:10px; color:#8f8; line-height:1.4; }
+  #shop .item .price { color:#ffd700; font-weight:bold; font-size:13px; margin-top:4px; }
+  #shop .item button, #inventory .item button {
+    padding:6px; background:#0f0; color:#000; border:none;
+    cursor:pointer; font-weight:bold; border-radius:4px;
+    font-family:monospace; font-size:11px; margin-top:5px;
+  }
+  #shop .item button:disabled, #inventory .item button:disabled {
+    background:#444; color:#888; cursor:not-allowed;
+  }
+  #shop .closeBtn, #inventory .closeBtn {
+    position:fixed; top:12px; right:16px;
+    padding:8px 16px; background:#f00; color:#fff;
+    border:none; border-radius:6px; font-weight:bold;
+    cursor:pointer; font-family:monospace; font-size:14px;
+  }
+
+  /* ТРИ КНОПКИ ВВЕРХУ: МАГАЗИН / ПАУЗА / ИНВЕНТАРЬ */
+  #shopBtn,
+  #pauseBtn,
+  #inventoryBtn {
+    position: fixed;
+    top: 10px;
+    padding: clamp(6px, 1vh, 10px) clamp(8px, 1.5vw, 16px);
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    color: #ffffff;
+    border-radius: 0;
+    font-weight: bold;
+    font-family: 'Courier New', monospace;
+    cursor: pointer;
+    z-index: 6;
+    font-size: clamp(9px, 1.3vw, 12px);
+    letter-spacing: 1px;
+    text-shadow: 2px 2px 0 #1a1a1a;
+    box-shadow: 0 3px 0 #0a0a0a;
+    transition: all 0.05s;
+    white-space: nowrap;
+  }
+  #shopBtn:active,
+  #pauseBtn:active,
+  #inventoryBtn:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #0a0a0a;
+    background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+  }
+
+  #shopBtn {
+    left: 50%;
+    transform: translateX(calc(-50% - 140px));
+  }
+  #pauseBtn {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  #inventoryBtn {
+    left: 50%;
+    transform: translateX(calc(-50% + 140px));
+  }
+
+  @media (max-width: 550px) {
+    #shopBtn {
+      transform: translateX(calc(-50% - 110px));
+    }
+    #inventoryBtn {
+      transform: translateX(calc(-50% + 110px));
+    }
+  }
+  @media (max-width: 420px) {
+    #shopBtn {
+      transform: translateX(calc(-50% - 85px));
+    }
+    #inventoryBtn {
+      transform: translateX(calc(-50% + 85px));
+    }
+    #shopBtn, #pauseBtn, #inventoryBtn {
+      font-size: 9px;
+      padding: 5px 8px;
+    }
+  }
+
+  /* МОБИЛЬНОЕ УПРАВЛЕНИЕ */
+  #joystick {
+    position:fixed; left:20px; bottom:20px;
+    width:130px; height:130px; border-radius:50%;
+    border:2px solid rgba(0,255,0,.4);
+    background:rgba(0,255,0,.05); z-index:6; touch-action:none;
+  }
+  #stick {
+    position:absolute; left:50%; top:50%;
+    width:56px; height:56px; margin:-28px 0 0 -28px;
+    border-radius:50%; background:rgba(0,255,0,.5);
+    border:2px solid #0f0; box-shadow:0 0 15px rgba(0,255,0,.7);
+  }
+  .mbtn {
+    position:fixed; border-radius:50%; color:#fff;
+    z-index:6; touch-action:none;
+    display:flex; align-items:center; justify-content:center;
+    font-weight:bold; text-align:center; line-height:1; font-size:12px;
+  }
+  #btnFire { right:30px; bottom:30px; width:85px; height:85px;
+    background:rgba(255,0,0,.35); border:3px solid #f00; }
+  #btnFire:active { background:rgba(255,0,0,.75); }
+  #btnJump { right:130px; bottom:25px; width:55px; height:55px;
+    background:rgba(0,150,255,.35); border:3px solid #09f; font-size:24px; }
+  #btnRun { right:30px; bottom:125px; width:55px; height:55px;
+    background:rgba(255,200,0,.35); border:3px solid #fc0; font-size:11px; }
+  #btnRun.on { background:rgba(255,200,0,.8); }
+  #btnReload { right:130px; bottom:95px; width:50px; height:50px;
+    background:rgba(150,150,150,.35); border:3px solid #999; font-size:18px; }
+  #btnUse { right:200px; bottom:30px; width:55px; height:55px;
+    background:rgba(255,215,0,.35); border:3px solid #ffd700; font-size:11px;
+    display:none; }
+  #btnUse.show { display:flex; }
+  #btnRocket { right:200px; bottom:100px; width:60px; height:60px;
+    background:rgba(255,80,0,.4); border:3px solid #ff5500; font-size:26px;
+    display:none; }
+  #btnRocket:active { background:rgba(255,80,0,.85); }
+
+  #btnFlyUp {
+    right:130px; bottom:25px;
+    width:55px; height:55px;
+    background:rgba(100,255,100,.35);
+    border:3px solid #0f0;
+    font-size:22px;
+    display:none;
+  }
+  #btnFlyUp:active { background:rgba(100,255,100,.85); }
+
+  #btnFlyDown {
+    right:30px; bottom:125px;
+    width:55px; height:55px;
+    background:rgba(255,100,100,.35);
+    border:3px solid #f44;
+    font-size:22px;
+    display:none;
+  }
+  #btnFlyDown:active { background:rgba(255,100,100,.85); }
+
+  #lookZone {
+    position:fixed; top:0; right:0;
+    width:50%; height:100%;
+    z-index:4; touch-action:none;
+  }
+
+  @media (max-height: 450px) {
+    #joystick {
+      width: 100px; height: 100px;
+      left: 12px; bottom: 12px;
+    }
+    #stick {
+      width: 44px; height: 44px;
+      margin: -22px 0 0 -22px;
+    }
+    #btnFire { width: 70px; height: 70px; }
+    #btnJump { width: 45px; height: 45px; font-size: 18px; }
+    #btnRun { width: 45px; height: 45px; font-size: 10px; }
+    #btnReload { width: 42px; height: 42px; font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- АУДИО: ФОНОВАЯ МУЗЫКА -->
+<audio id="bgMusic" loop preload="auto">
+  <source src="DronSound.mp3" type="audio/mpeg">
+</audio>
+
+<!-- ГЛАВНОЕ МЕНЮ -->
+<div id="mainMenu">
+  <div class="mc-logo">
+    <h1>DRONE SURVIVAL</h1>
+  </div>
+
+  <div class="hero-picker">
+    <div class="hero-card selected" data-hero="artem">
+      <div class="avatar">💪</div>
+      <div class="name">АРТЁМ</div>
+      <div class="desc">+50 HP<br>+20% урона</div>
+    </div>
+    <div class="hero-card" data-hero="yurik">
+      <div class="avatar">🏃</div>
+      <div class="name">ЮРИК</div>
+      <div class="desc">+30% скорость<br>Лёгкий</div>
+    </div>
+  </div>
+
+  <button class="menu-btn" id="playBtn">▶ ИГРАТЬ</button>
+  <button class="menu-btn tertiary" id="settingsBtn">⚙️ НАСТРОЙКИ</button>
+  <button class="menu-btn tertiary" id="promoBtn">🎁 ПРОМОКОД</button>
+  <button class="menu-btn secondary" id="aboutBtn">ⓘ ОБ ИГРЕ</button>
+
+  <div class="record-info">🏆 Рекорд: <span id="bestMenu">0</span> $</div>
+
+  <div class="footer">
+    <div class="left">
+      Версия 1.0<br>
+      Drone Survival · 2026<br>
+      Язык: Русский
+    </div>
+    <div class="right">
+      © Sqwidik<br>
+      Сделано с душой
+    </div>
+  </div>
+</div>
+
+<!-- ОВЕРЛЕЙ ПОВОРОТА -->
+<div id="rotateOverlay">
+  <div class="phone-icon">📱</div>
+  <h2>ПОВЕРНИ ТЕЛЕФОН</h2>
+  <p>Игра лучше играется в горизонтальном режиме<br>Поверни телефон боком 📱 ➡️ 📺</p>
+</div>
+
+<!-- МОДАЛКА ПАУЗЫ -->
+<div class="modal" id="pauseModal">
+  <div class="box pause-box">
+    <h2>⏸ ПАУЗА</h2>
+    <p style="color:#a4e86b;margin-bottom:16px">Игра приостановлена</p>
+
+    <button class="pause-menu-btn" id="pauseResume">▶ ПРОДОЛЖИТЬ</button>
+    <button class="pause-menu-btn" id="pauseSettings">⚙️ НАСТРОЙКИ</button>
+    <button class="pause-menu-btn danger" id="pauseExit">🏠 ВЫЙТИ В МЕНЮ</button>
+  </div>
+</div>
+
+<!-- МОДАЛКА ОБ ИГРЕ -->
+<div class="modal" id="aboutModal">
+  <div class="box">
+    <h2>ОБ ИГРЕ</h2>
+    <p>🌍 Эта игра основана на реальных событиях.</p>
+    <p>Дроны захватили мир, и ты — один из последних выживших. Собирай лут, покупай оружие и технику, уничтожай БПЛА и выживай как можно дольше.</p>
+    <p class="thanks">❤ Спасибо, что установили её!<br>Мы вам очень благодарны.</p>
+    <button id="closeAbout">ЗАКРЫТЬ</button>
+  </div>
+</div>
+
+<!-- МОДАЛКА ПРОМОКОДА -->
+<div class="modal" id="promoModal">
+  <div class="box">
+    <h2>🎁 ПРОМОКОД</h2>
+    <p>Введи секретный код и получи бонус!</p>
+    <input type="text" id="promoInput" placeholder="ВВЕДИ КОД..." maxlength="30" autocomplete="off">
+    <div class="promo-status" id="promoStatus"></div>
+    <button id="applyPromo">ПРИМЕНИТЬ</button>
+    <button class="cancel" id="closePromo">ОТМЕНА</button>
+  </div>
+</div>
+
+<!-- МОДАЛКА НАСТРОЕК -->
+<div class="modal" id="settingsModal">
+  <div class="box settings-box">
+    <h2>⚙️ НАСТРОЙКИ</h2>
+
+    <div class="settings-presets">
+      <button class="preset-btn" data-preset="low">🟢 НИЗКАЯ</button>
+      <button class="preset-btn" data-preset="medium">🟡 СРЕДНЯЯ</button>
+      <button class="preset-btn" data-preset="high">🟠 ВЫСОКАЯ</button>
+      <button class="preset-btn" data-preset="ultra">🔴 УЛЬТРА</button>
+    </div>
+
+    <div class="settings-list">
+      <div class="setting-row">
+        <label>👁️ Обзор</label>
+        <input type="range" id="setViewDist" min="0" max="5" step="1">
+        <span class="setting-value" id="setViewDistVal">3</span>
+      </div>
+      <div class="setting-row">
+        <label>🌾 Трава</label>
+        <input type="range" id="setGrass" min="0" max="50" step="5">
+        <span class="setting-value" id="setGrassVal">30</span>
+      </div>
+      <div class="setting-row">
+        <label>🌳 Деревья</label>
+        <input type="range" id="setTrees" min="0" max="20" step="2">
+        <span class="setting-value" id="setTreesVal">12</span>
+      </div>
+      <div class="setting-row">
+        <label>🦋 Бабочки</label>
+        <input type="range" id="setButterflies" min="0" max="10" step="1">
+        <span class="setting-value" id="setButterfliesVal">3</span>
+      </div>
+      <div class="setting-row">
+        <label>🌤️ Погода</label>
+        <input type="checkbox" id="setWeather">
+        <span class="setting-value" id="setWeatherVal">ВКЛ</span>
+      </div>
+      <div class="setting-row">
+        <label>🕶️ Тени</label>
+        <input type="checkbox" id="setShadows">
+        <span class="setting-value" id="setShadowsVal">ВЫКЛ</span>
+      </div>
+      <div class="setting-row">
+        <label>🖼️ Разрешение</label>
+        <input type="range" id="setResolution" min="0.7" max="2" step="0.1">
+        <span class="setting-value" id="setResolutionVal">1.3x</span>
+      </div>
+      <div class="setting-row">
+        <label>🎵 Звуки</label>
+        <input type="checkbox" id="setAmbientSound">
+        <span class="setting-value" id="setAmbientSoundVal">ВКЛ</span>
+      </div>
+
+      <div class="setting-row" style="grid-template-columns: 1fr;">
+        <label style="text-align:center;font-size:13px;color:#ffe888;padding:6px 0 2px 0;">
+          🎵 ФОНОВАЯ МУЗЫКА
+        </label>
+      </div>
+      <div class="music-btn-row">
+        <button class="music-btn active" id="musicOnBtn">🔊 ВКЛ</button>
+        <button class="music-btn" id="musicOffBtn">🔇 ВЫКЛ</button>
+      </div>
+      <div class="setting-row" style="margin-top:8px;">
+        <label>🎚️ Громкость</label>
+        <input type="range" id="setMusicVolume" min="0" max="1" step="0.05">
+        <span class="setting-value" id="setMusicVolumeVal">40%</span>
+      </div>
+    </div>
+
+    <button id="closeSettings">ЗАКРЫТЬ</button>
+    <button class="cancel" id="resetSettings">СБРОС</button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div class="hero">👤 <span id="heroName">Артём</span></div>
+  <div>🎯 Сбито: <span id="score">0</span></div>
+  <div class="money">💰 <span id="money">0</span> $</div>
+  <div class="weapon">🔫 <span id="weaponName">Пистолет</span></div>
+  <div class="vehicle">🚗 <span id="vehicleName">Пешеход</span></div>
+  <div class="enemies">👮 Врагов: <span id="enemyCount">0</span></div>
+</div>
+<div id="hpbar"><div id="hpfill"></div></div>
+<div id="ammo">
+  <span class="ammo-label">ПАТРОНЫ</span>
+  <span class="ammo-count"><span id="ammoCur">30</span> / <span id="ammoMax">30</span></span>
+</div>
+<div id="reloading">ПЕРЕЗАРЯДКА...</div>
+<div id="crosshair"></div>
+<div id="damageFlash"></div>
+<div id="alert">⚠ ОБНАРУЖЕН БПЛА ⚠</div>
+<div id="hint"></div>
+<div id="record">Рекорд: <span id="best">0</span> $</div>
+
+<!-- ТРИ КНОПКИ: МАГАЗИН / ПАУЗА / ИНВЕНТАРЬ -->
+<button id="shopBtn">🛒 МАГАЗИН</button>
+<button id="pauseBtn">⏸ ПАУЗА</button>
+<button id="inventoryBtn">🎒 ИНВЕНТАРЬ</button>
+
+<!-- МАГАЗИН -->
+<div id="shop">
+  <button class="closeBtn" onclick="closeShop()">✕</button>
+  <h2>🛒 МАГАЗИН</h2>
+  <div class="wallet">💰 <span id="shopMoney">0</span> $</div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('weapons', event)">🔫 ОРУЖИЕ</button>
+    <button class="tab" onclick="switchTab('vehicles', event)">🚗 ТРАНСПОРТ</button>
+    <button class="tab" onclick="switchTab('drones', event)">🤖 ДРОНЫ</button>
+    <button class="tab" onclick="switchTab('rockets', event)">🚀 РАКЕТЫ</button>
+  </div>
+  <div id="shopItems" class="items"></div>
+</div>
+
+<!-- ИНВЕНТАРЬ -->
+<div id="inventory">
+  <button class="closeBtn" onclick="closeInventory()">✕</button>
+  <h2>🎒 ИНВЕНТАРЬ</h2>
+  <div class="inv-tabs">
+    <button class="inv-tab active" onclick="switchInvTab('weapons', event)">🔫 ОРУЖИЕ</button>
+    <button class="inv-tab" onclick="switchInvTab('rockets', event)">🚀 РАКЕТЫ</button>
+  </div>
+  <div id="inventoryItems" class="items"></div>
+</div>
+
+<!-- МОБИЛЬНОЕ УПРАВЛЕНИЕ -->
+<div id="mobileControls">
+  <div id="lookZone"></div>
+  <div id="joystick"><div id="stick"></div></div>
+  <div id="btnFire" class="mbtn">ОГОНЬ</div>
+  <div id="btnJump" class="mbtn">↑</div>
+  <div id="btnRun" class="mbtn">БЕГ</div>
+  <div id="btnReload" class="mbtn">R</div>
+  <div id="btnUse" class="mbtn">ВЗЯТЬ</div>
+  <div id="btnRocket" class="mbtn">🚀</div>
+  <div id="btnFlyUp" class="mbtn">⬆</div>
+  <div id="btnFlyDown" class="mbtn">⬇</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+<script type="module" src="orientation.js"></script>
+<script type="module" src="game.js"></script>
+</body>
+</html>
