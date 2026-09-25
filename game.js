@@ -95,9 +95,6 @@ let gameActive = false;
 let started = false;
 let paused = false;
 
-// ⚠️ ВАЖНО: yaw и pitch должны быть ОБЪЯВЛЕНЫ ДО первого вызова rebuildPlayer()
-let yaw = 0, pitch = 0;
-
 let currentWeapon = WEAPONS.pistol;
 let currentVehicle = VEHICLES.foot;
 let ownedWeapons = new Set(['pistol']);
@@ -129,6 +126,10 @@ let allDrones = [];
 let nearestLoot = null;
 
 let sunLight = null, hemiLight = null, ambientLight = null;
+
+// FIX: yaw и pitch должны быть объявлены — иначе ReferenceError "yaw is not defined"
+let yaw = 0;
+let pitch = 0;
 
 // ============ МУЗЫКА ============
 let bgMusic = null;
@@ -1394,12 +1395,10 @@ function togglePause() {
   const pauseModal = document.getElementById('pauseModal');
 
   if (paused) {
-    // Возобновить
     pauseModal.classList.remove('show');
     paused = false;
     if (!isTouch && gameActive) renderer.domElement.requestPointerLock();
   } else {
-    // Пауза
     sndMenuClick();
     paused = true;
     pauseModal.classList.add('show');
@@ -1617,7 +1616,16 @@ function selectRocket(id) {
   document.getElementById('btnRocket').classList.add('show');
 }
 
-function buyWeapon(id) { const w = WEAPONS[id]; if (money < w.price) return; money -= w.price; ownedWeapons.add(id); equipWeapon(id); sndBuy(); updateMoneyUI(); }
+function buyWeapon(id) {
+  const w = WEAPONS[id];
+  if (money < w.price) return;
+  money -= w.price;
+  ownedWeapons.add(id);
+  equipWeapon(id);
+  sndBuy();
+  updateMoneyUI();
+  window.dispatchEvent(new Event('game:buy'));
+}
 function equipWeapon(id) {
   currentWeapon = WEAPONS[id];
   ammo = currentWeapon.mag;
@@ -1626,7 +1634,16 @@ function equipWeapon(id) {
   updateHUDNames();
   updateViewWeapon();
 }
-function buyVehicle(id) { const v = VEHICLES[id]; if (money < v.price) return; money -= v.price; ownedVehicles.add(id); equipVehicle(id); sndBuy(); updateMoneyUI(); }
+function buyVehicle(id) {
+  const v = VEHICLES[id];
+  if (money < v.price) return;
+  money -= v.price;
+  ownedVehicles.add(id);
+  equipVehicle(id);
+  sndBuy();
+  updateMoneyUI();
+  window.dispatchEvent(new Event('game:buy'));
+}
 function equipVehicle(id) {
   currentVehicle = VEHICLES[id]; rebuildPlayer();
   const oldMax = maxHealth;
@@ -1634,8 +1651,26 @@ function equipVehicle(id) {
   health = Math.min(maxHealth, health + (maxHealth - oldMax));
   updateHpUI(); updateHUDNames(); sndVehicle();
 }
-function buyAllyDrone(id) { const d = ALLY_DRONES[id]; if (money < d.price) return; money -= d.price; ownedAllyDrones.add(id); spawnAllyDrone(id); sndBuy(); updateMoneyUI(); }
-function buyRocket(id) { const r = ROCKETS[id]; if (money < r.price) return; money -= r.price; ownedRockets.add(id); selectRocket(id); sndBuy(); updateMoneyUI(); }
+function buyAllyDrone(id) {
+  const d = ALLY_DRONES[id];
+  if (money < d.price) return;
+  money -= d.price;
+  ownedAllyDrones.add(id);
+  spawnAllyDrone(id);
+  sndBuy();
+  updateMoneyUI();
+  window.dispatchEvent(new Event('game:buy'));
+}
+function buyRocket(id) {
+  const r = ROCKETS[id];
+  if (money < r.price) return;
+  money -= r.price;
+  ownedRockets.add(id);
+  selectRocket(id);
+  sndBuy();
+  updateMoneyUI();
+  window.dispatchEvent(new Event('game:buy'));
+}
 function updateMoneyUI() { document.getElementById('money').textContent = money; document.getElementById('shopMoney').textContent = money; }
 function updateHUDNames() {
   document.getElementById('weaponName').textContent = currentWeapon.name;
@@ -1654,7 +1689,13 @@ function startReload() {
 function updateReload(dt) {
   if (!reloading) return;
   reloadTimer -= dt;
-  if (reloadTimer <= 0) { reloading = false; ammo = currentWeapon.mag; document.getElementById('reloading').style.display = 'none'; updateAmmoUI(); }
+  if (reloadTimer <= 0) {
+    reloading = false;
+    ammo = currentWeapon.mag;
+    document.getElementById('reloading').style.display = 'none';
+    updateAmmoUI();
+    window.dispatchEvent(new Event('game:reload'));
+  }
 }
 function updateAmmoUI() {
   document.getElementById('ammoCur').textContent = ammo;
@@ -1671,6 +1712,7 @@ function shoot() {
   ammo--;
   updateAmmoUI();
   sndWeaponShoot(currentWeapon.id);
+  window.dispatchEvent(new Event('game:shoot'));
 
   const dir = new THREE.Vector3();
   camera.getWorldDirection(dir);
@@ -1690,7 +1732,7 @@ function shoot() {
         d.normalize();
       }
       const tracer = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.30, 0.30, 1.2, 4),
+        new THREE.CylinderGeometry(0.03, 0.03, 1.2, 4),
         new THREE.MeshBasicMaterial({ color: currentWeapon.color, transparent: true, opacity: 0.95, depthWrite: false })
       );
       tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
@@ -1885,7 +1927,7 @@ function explodeRocketProjectile(pos, ud) {
     for (let i = 0; i < ud.cluster; i++) {
       const angle = (i / ud.cluster) * Math.PI * 2;
       const subDir = new THREE.Vector3(Math.cos(angle), 0.5, Math.sin(angle)).normalize();
-      const sub = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 3.5, 4), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
+      const sub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.5, 6), new THREE.MeshBasicMaterial({ color: 0xffaa00 }));
       sub.position.copy(pos);
       sub.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), subDir);
       sub.userData = { velocity: subDir.multiplyScalar(20), life: 1.5, blastRadius: 2, blastDamage: ud.blastDamage * 0.5, def: null, cluster: 0, emp: false };
@@ -2695,3 +2737,54 @@ function setupUIEvents() {
 // ============ СТАРТ ============
 init();
 animate();
+
+// ============ ЭКСПОРТ ДЛЯ TUTORIAL.JS ============
+window.gameAPI = {
+  // Получить ссылки
+  getPlayer: () => player,
+  getCamera: () => camera,
+  getScene: () => scene,
+  getDrones: () => allDrones,
+  getNpcs: () => npcs,
+  getYaw: () => yaw,
+  getPitch: () => pitch,
+  getGameActive: () => gameActive,
+  getPaused: () => paused,
+  getStarted: () => started,
+  isTouchDevice: () => isTouch,
+
+  // Изменения
+  addMoney: (amount) => { money += amount; updateMoneyUI(); },
+  setPaused: (v) => { paused = v; },
+  setGameActive: (v) => { gameActive = v; },
+  setStarted: (v) => { started = v; },
+  setPlayingClass: () => document.body.classList.add('playing'),
+  removePlayingClass: () => document.body.classList.remove('playing'),
+
+  // Функции
+  sndMenuClick: () => sndMenuClick(),
+  spawnDrone: () => {
+    const d = createDrone(player.position.x + 40, player.position.z + 40);
+    d.active = false;
+    scene.add(d.group);
+    allDrones.push(d);
+    return d;
+  },
+  spawnDroneClose: () => {
+    const d = createDrone(player.position.x + 25, player.position.z + 25);
+    d.active = false;
+    scene.add(d.group);
+    allDrones.push(d);
+    return d;
+  },
+  addWeaponFree: (id) => {
+    ownedWeapons.add(id);
+    updateHUDNames();
+  },
+  equipWeapon: (id) => equipWeapon(id),
+
+  // Проверки
+  WEAPONS, VEHICLES, ALLY_DRONES, ROCKETS
+};
+
+console.log('🎓 gameAPI готово — обучение доступно');
