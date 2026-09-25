@@ -799,24 +799,236 @@
   }
 
   @media (max-width: 550px) {
-    #shopBtn {
-      transform: translateX(calc(-50% - 110px));
-    }
-    #inventoryBtn {
-      transform: translateX(calc(-50% + 110px));
-    }
+    #shopBtn { transform: translateX(calc(-50% - 110px)); }
+    #inventoryBtn { transform: translateX(calc(-50% + 110px)); }
   }
   @media (max-width: 420px) {
-    #shopBtn {
-      transform: translateX(calc(-50% - 85px));
-    }
-    #inventoryBtn {
-      transform: translateX(calc(-50% + 85px));
-    }
+    #shopBtn { transform: translateX(calc(-50% - 85px)); }
+    #inventoryBtn { transform: translateX(calc(-50% + 85px)); }
     #shopBtn, #pauseBtn, #inventoryBtn {
       font-size: 9px;
       padding: 5px 8px;
     }
+  }
+
+  /* ═══ ОБУЧЕНИЕ — ПРАВЫЙ ВЕРХНИЙ УГОЛ ═══ */
+  #tutorialPanel {
+    position: fixed;
+    top: 60px;
+    right: 12px;
+    width: min(75vw, 340px);
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 16;
+    font-family: 'Courier New', monospace;
+    pointer-events: none;
+  }
+  #tutorialPanel.show { display: flex; }
+
+  /* ── Портрет Толика ── */
+  #tutorialPanel .tp-tolik {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    padding: 8px 10px;
+    box-shadow: 0 4px 0 #0a0a0a, 0 6px 14px rgba(0,0,0,0.7);
+    opacity: 0;
+    transform: translateY(-8px);
+    transition: opacity 0.3s, transform 0.3s;
+    pointer-events: auto;
+  }
+  #tutorialPanel .tp-tolik.show {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  #tutorialPanel .tp-tolik.hidden {
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+  }
+
+  #tutorialPanel .tp-avatar {
+    width: 52px;
+    height: 52px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    box-shadow: 0 3px 0 #0a0a0a;
+    overflow: hidden;
+    animation: tolikBob 1.6s ease-in-out infinite;
+  }
+  #tutorialPanel .tp-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  @keyframes tolikBob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-3px); }
+  }
+
+  #tutorialPanel .tp-dialog { flex: 1; min-width: 0; }
+  #tutorialPanel .tp-speaker {
+    color: #ffdd44;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-shadow: 1px 1px 0 #1a1a1a;
+    margin-bottom: 4px;
+  }
+  #tutorialPanel .tp-text {
+    color: #ffffff;
+    font-size: 12px;
+    line-height: 1.4;
+    text-shadow: 1px 1px 0 #1a1a1a;
+    word-wrap: break-word;
+  }
+
+  /* ── Панель задания ── */
+  #tutorialPanel .tp-task-box {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    padding: 8px 10px;
+    box-shadow: 0 4px 0 #0a0a0a, 0 6px 14px rgba(0,0,0,0.7);
+    pointer-events: auto;
+  }
+  #tutorialPanel .tp-task-box.show { display: flex; }
+
+  #tutorialPanel .tp-task-icon {
+    font-size: 26px;
+    flex-shrink: 0;
+    filter: drop-shadow(2px 2px 0 #1a1a1a);
+    line-height: 1;
+  }
+  #tutorialPanel .tp-task-info { flex: 1; min-width: 0; }
+  #tutorialPanel .tp-task-title {
+    color: #ffdd44;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-shadow: 1px 1px 0 #1a1a1a;
+    margin-bottom: 2px;
+  }
+  #tutorialPanel .tp-task-text {
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #1a1a1a;
+    line-height: 1.3;
+    word-wrap: break-word;
+  }
+  #tutorialPanel .tp-task-progress {
+    color: #a4e86b;
+    font-size: 11px;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #1a1a1a;
+    margin-top: 3px;
+  }
+
+  /* Кнопка пропустить */
+  #tutorialPanel .tp-skip {
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    background: linear-gradient(180deg, #6b6b6b 0%, #4a4a4a 100%);
+    border: 3px solid #2a2a2a;
+    border-top-color: #8a8a8a;
+    border-left-color: #8a8a8a;
+    border-right-color: #1a1a1a;
+    border-bottom-color: #1a1a1a;
+    box-shadow: 0 3px 0 #0a0a0a;
+    color: #ff8888;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    text-shadow: 1px 1px 0 #1a1a1a;
+  }
+  #tutorialPanel .tp-skip:hover { color: #ffcccc; }
+  #tutorialPanel .tp-skip:active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 #0a0a0a;
+    background: linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+  }
+
+  /* HUD в режиме обучения — слева */
+  body.tutorial-mode #hud { max-width: 45vw; }
+
+  /* "ЗАДАНИЕ ВЫПОЛНЕНО" */
+  #taskComplete {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) scale(0.5);
+    color: #ffffff;
+    font-size: clamp(16px, 2.5vw, 24px);
+    font-weight: bold;
+    text-shadow: 3px 3px 0 #1a1a1a;
+    background: linear-gradient(180deg, #7bc74d 0%, #4a9f20 100%);
+    border: 4px solid #2a2a2a;
+    border-top-color: #a4e86b;
+    border-left-color: #a4e86b;
+    border-right-color: #1a3a0a;
+    border-bottom-color: #1a3a0a;
+    padding: 14px 28px;
+    z-index: 20;
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    font-family: 'Courier New', monospace;
+    letter-spacing: 2px;
+    box-shadow: 0 6px 0 #0a0a0a, 0 8px 20px rgba(0,0,0,0.7);
+    white-space: nowrap;
+  }
+  #taskComplete.show {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  #taskComplete.hide {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+
+  @media (max-width: 500px) {
+    #tutorialPanel { width: min(78vw, 320px); top: 55px; right: 8px; }
+    #tutorialPanel .tp-avatar { width: 44px; height: 44px; }
+    #tutorialPanel .tp-text { font-size: 11px; }
+    #tutorialPanel .tp-task-text { font-size: 11px; }
+  }
+
+  @media (max-height: 500px) {
+    #tutorialPanel { top: 48px; width: min(72vw, 300px); }
+    #tutorialPanel .tp-tolik { padding: 6px 8px; gap: 8px; }
+    #tutorialPanel .tp-avatar { width: 40px; height: 40px; }
+    #tutorialPanel .tp-text { font-size: 10px; }
+    #tutorialPanel .tp-task-box { padding: 6px 8px; gap: 8px; }
+    #tutorialPanel .tp-task-icon { font-size: 22px; }
+    #tutorialPanel .tp-task-text { font-size: 10px; }
+    #tutorialPanel .tp-skip { width: 24px; height: 24px; font-size: 11px; }
   }
 
   /* МОБИЛЬНОЕ УПРАВЛЕНИЕ */
@@ -910,6 +1122,8 @@
 <div id="mainMenu">
   <div class="mc-logo">
     <h1>DRONE SURVIVAL</h1>
+    <div class="subtitle">ВЫЖИВАНИЕ ОТ БПЛА</div>
+    <div class="splash">Основана на реальных событиях!</div>
   </div>
 
   <div class="hero-picker">
@@ -926,6 +1140,7 @@
   </div>
 
   <button class="menu-btn" id="playBtn">▶ ИГРАТЬ</button>
+  <button class="menu-btn tertiary" id="tutorialBtn">🎓 ОБУЧЕНИЕ</button>
   <button class="menu-btn tertiary" id="settingsBtn">⚙️ НАСТРОЙКИ</button>
   <button class="menu-btn tertiary" id="promoBtn">🎁 ПРОМОКОД</button>
   <button class="menu-btn secondary" id="aboutBtn">ⓘ ОБ ИГРЕ</button>
@@ -939,7 +1154,7 @@
       Язык: Русский
     </div>
     <div class="right">
-      © Sqwidik<br>
+      © Drone Survival<br>
       Сделано с душой
     </div>
   </div>
@@ -951,6 +1166,34 @@
   <h2>ПОВЕРНИ ТЕЛЕФОН</h2>
   <p>Игра лучше играется в горизонтальном режиме<br>Поверни телефон боком 📱 ➡️ 📺</p>
 </div>
+
+<!-- ПАНЕЛЬ ОБУЧЕНИЯ (правый верхний угол) -->
+<div id="tutorialPanel">
+  <!-- Толик (появляется, говорит, исчезает) -->
+  <div class="tp-tolik" id="tolikBox">
+    <div class="tp-avatar">
+      <img src="Tolik.jpg" alt="Толик">
+    </div>
+    <div class="tp-dialog">
+      <div class="tp-speaker">ТОЛИК:</div>
+      <div class="tp-text" id="tutorialText">Привет! Давай научу тебя выживать.</div>
+    </div>
+  </div>
+
+  <!-- Панель задания (висит до выполнения) -->
+  <div class="tp-task-box" id="taskBox">
+    <div class="tp-task-icon" id="taskIcon">🎯</div>
+    <div class="tp-task-info">
+      <div class="tp-task-title" id="taskTitle">ЗАДАНИЕ</div>
+      <div class="tp-task-text" id="taskDesc">Пройди вперёд</div>
+      <div class="tp-task-progress" id="taskProgress"></div>
+    </div>
+    <button class="tp-skip" id="taskSkip" title="Пропустить">✕</button>
+  </div>
+</div>
+
+<!-- Уведомление о выполнении -->
+<div id="taskComplete">✅ ЗАДАНИЕ ВЫПОЛНЕНО!</div>
 
 <!-- МОДАЛКА ПАУЗЫ -->
 <div class="modal" id="pauseModal">
@@ -1136,5 +1379,6 @@
 </script>
 <script type="module" src="orientation.js"></script>
 <script type="module" src="game.js"></script>
+<script type="module" src="tutorial.js"></script>
 </body>
 </html>
