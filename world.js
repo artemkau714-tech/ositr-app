@@ -6,13 +6,13 @@ export const VIEW_CHUNKS = 3;
 
 // ============ НАСТРОЙКИ ============
 export const SETTINGS = {
-  viewDist: 3,
-  grass: 30,
-  trees: 12,
-  butterflies: 3,
-  weather: true,
+  viewDist: 2,
+  grass: 6,
+  trees: 8,
+  butterflies: 2,
+  weather: false,
   shadows: false,
-  resolution: 1.3,
+  resolution: 1.0,
   ambientSound: true,
 
   load() {
@@ -24,6 +24,17 @@ export const SETTINGS = {
       }
     } catch (e) {
       console.log('Ошибка загрузки настроек:', e);
+    }
+
+    const isMobile = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+    if (isMobile) {
+      if (this.viewDist > 2) this.viewDist = 2;
+      if (this.grass > 6) this.grass = 6;
+      if (this.trees > 8) this.trees = 8;
+      if (this.butterflies > 2) this.butterflies = 2;
+      if (this.resolution > 10.0) this.resolution = 10.0;
+      this.shadows = false;
+      this.weather = false;
     }
   },
 
@@ -48,43 +59,43 @@ export const SETTINGS = {
   applyPreset(name) {
     switch (name) {
       case 'low':
-        this.viewDist = 2;
-        this.grass = 5;
-        this.trees = 4;
-        this.butterflies = 1;
+        this.viewDist = 1;
+        this.grass = 0;
+        this.trees = 3;
+        this.butterflies = 0;
         this.weather = false;
         this.shadows = false;
         this.resolution = 0.8;
         this.ambientSound = false;
         break;
       case 'medium':
-        this.viewDist = 3;
-        this.grass = 15;
-        this.trees = 8;
-        this.butterflies = 2;
-        this.weather = true;
+        this.viewDist = 2;
+        this.grass = 3;
+        this.trees = 5;
+        this.butterflies = 1;
+        this.weather = false;
         this.shadows = false;
         this.resolution = 1.0;
         this.ambientSound = true;
         break;
       case 'high':
-        this.viewDist = 3;
-        this.grass = 30;
-        this.trees = 12;
-        this.butterflies = 3;
+        this.viewDist = 2;
+        this.grass = 6;
+        this.trees = 8;
+        this.butterflies = 2;
         this.weather = true;
-        this.shadows = true;
-        this.resolution = 1.5;
+        this.shadows = false;
+        this.resolution = 1.2;
         this.ambientSound = true;
         break;
       case 'ultra':
-        this.viewDist = 5;
-        this.grass = 50;
-        this.trees = 20;
-        this.butterflies = 6;
+        this.viewDist = 3;
+        this.grass = 10;
+        this.trees = 10;
+        this.butterflies = 3;
         this.weather = true;
-        this.shadows = true;
-        this.resolution = 2.0;
+        this.shadows = false;
+        this.resolution = 1.4;
         this.ambientSound = true;
         break;
     }
@@ -92,7 +103,6 @@ export const SETTINGS = {
   }
 };
 
-// Загружаем настройки при импорте
 SETTINGS.load();
 
 // ============ СОСТОЯНИЕ МИРА ============
@@ -118,9 +128,7 @@ export const WIND = {
 
 // ============ ВОДА (отключена) ============
 export const WATER_LEVEL = -999;
-export function isWaterAt(x, z) {
-  return false;
-}
+export function isWaterAt(x, z) { return false; }
 
 // ============ ПОГОДА ============
 export const WEATHER = {
@@ -146,20 +154,15 @@ export const WEATHER = {
   setWeather(type) {
     this.type = type;
     this.removeEffects();
-
-    if (type === 'rain') {
-      this.createRain();
-    } else if (type === 'snow') {
-      this.createSnow();
-    } else if (type === 'fog') {
+    if (type === 'rain') this.createRain();
+    else if (type === 'snow') this.createSnow();
+    else if (type === 'fog') {
       if (this.scene) {
         this.scene.fog = new THREE.Fog(0xcccccc, 20, 100);
-        this.scene.background = new THREE.Color(0xcccccc);
       }
     } else {
       if (this.scene) {
-        this.scene.fog = new THREE.Fog(0x8fb8dd, 180, 550);
-        this.scene.background = new THREE.Color(0x8fb8dd);
+        this.scene.fog = new THREE.FogExp2(0xa8c8e8, 0.005);
       }
     }
   },
@@ -188,9 +191,7 @@ export const WEATHER = {
       velocities[i] = 30 + Math.random() * 20;
     }
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({
-      color: 0xaaccff, size: 0.15, transparent: true, opacity: 0.7
-    });
+    const mat = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.15, transparent: true, opacity: 0.7 });
     this.rainParticles = new THREE.Points(geo, mat);
     this.rainParticles.userData.velocities = velocities;
     this.scene.add(this.rainParticles);
@@ -209,9 +210,7 @@ export const WEATHER = {
       velocities[i] = 2 + Math.random() * 3;
     }
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    const mat = new THREE.PointsMaterial({
-      color: 0xffffff, size: 0.3, transparent: true, opacity: 0.9
-    });
+    const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.3, transparent: true, opacity: 0.9 });
     this.snowParticles = new THREE.Points(geo, mat);
     this.snowParticles.userData.velocities = velocities;
     this.scene.add(this.snowParticles);
@@ -221,7 +220,6 @@ export const WEATHER = {
     this.timeOfDay += (24 / this.dayLength) * dt;
     if (this.timeOfDay >= 24) this.timeOfDay -= 24;
 
-    // Авто-смена погоды
     this.weatherTimer -= dt;
     if (this.weatherTimer <= 0) {
       const roll = Math.random();
@@ -230,24 +228,15 @@ export const WEATHER = {
       else if (roll < 0.75) newType = 'rain';
       else if (roll < 0.92) newType = 'fog';
       else newType = 'snow';
-
-      if (newType !== this.type) {
-        this.setWeather(newType);
-      }
+      if (newType !== this.type) this.setWeather(newType);
       this.weatherTimer = 90 + Math.random() * 150;
     }
 
-    // Освещение
     let timeLight;
-    if (this.timeOfDay >= 6 && this.timeOfDay < 8) {
-      timeLight = (this.timeOfDay - 6) / 2;
-    } else if (this.timeOfDay >= 8 && this.timeOfDay < 18) {
-      timeLight = 1.0;
-    } else if (this.timeOfDay >= 18 && this.timeOfDay < 20) {
-      timeLight = 1.0 - (this.timeOfDay - 18) / 2;
-    } else {
-      timeLight = 0.15;
-    }
+    if (this.timeOfDay >= 6 && this.timeOfDay < 8) timeLight = (this.timeOfDay - 6) / 2;
+    else if (this.timeOfDay >= 8 && this.timeOfDay < 18) timeLight = 1.0;
+    else if (this.timeOfDay >= 18 && this.timeOfDay < 20) timeLight = 1.0 - (this.timeOfDay - 18) / 2;
+    else timeLight = 0.15;
 
     const weatherMult = this.type === 'rain' ? 0.6 : this.type === 'snow' ? 0.85 : 1.0;
     const targetLight = timeLight * weatherMult;
@@ -263,14 +252,12 @@ export const WEATHER = {
       );
       if (this.scene && this.type === 'clear') {
         const skyColor = this.getSkyColor();
-        this.scene.background = skyColor;
         if (this.scene.fog) this.scene.fog.color.copy(skyColor);
       }
     }
     if (this.hemiLight) this.hemiLight.intensity = 0.85 * this.currentLight + 0.15;
     if (this.ambientLight) this.ambientLight.intensity = 0.15 + (1 - this.currentLight) * 0.1;
 
-    // Дождь
     if (this.rainParticles) {
       const pos = this.rainParticles.geometry.attributes.position;
       const vel = this.rainParticles.userData.velocities;
@@ -287,7 +274,6 @@ export const WEATHER = {
       }
       pos.needsUpdate = true;
     }
-    // Снег
     if (this.snowParticles) {
       const pos = this.snowParticles.geometry.attributes.position;
       const vel = this.snowParticles.userData.velocities;
@@ -362,18 +348,28 @@ export const wildlife = {
   }
 };
 
-// ============ ТЕКСТУРЫ ============
+// ============ ТЕКСТУРЫ (256x256) ============
 export function makeGrassTexture() {
   const cvs = document.createElement('canvas');
-  cvs.width = cvs.height = 128;
+  cvs.width = cvs.height = 256;
   const ctx = cvs.getContext('2d');
   ctx.fillStyle = '#4a7c3a';
-  ctx.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 2000; i++) {
-    const x = Math.random() * 128, y = Math.random() * 128;
-    const g = 90 + Math.random() * 70;
-    ctx.fillStyle = `rgb(${30 + Math.random()*40}, ${g}, ${30 + Math.random()*30})`;
-    ctx.fillRect(x, y, 1, 1);
+  ctx.fillRect(0, 0, 256, 256);
+  for (let layer = 0; layer < 5; layer++) {
+    const alpha = 0.15 + layer * 0.05;
+    for (let i = 0; i < 3000; i++) {
+      const x = Math.random() * 256, y = Math.random() * 256;
+      const g = 70 + Math.random() * 80;
+      ctx.fillStyle = `rgba(${30 + Math.random()*40}, ${g}, ${25 + Math.random()*30}, ${alpha})`;
+      ctx.fillRect(x, y, 1 + Math.random() * 2, 1 + Math.random() * 2);
+    }
+  }
+  for (let i = 0; i < 40; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256, r = 3 + Math.random() * 8;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${80 + Math.random()*40}, ${60 + Math.random()*30}, ${30 + Math.random()*20}, 0.35)`;
+    ctx.fill();
   }
   const tex = new THREE.CanvasTexture(cvs);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -383,15 +379,24 @@ export function makeGrassTexture() {
 
 export function makeRoadTexture() {
   const cvs = document.createElement('canvas');
-  cvs.width = cvs.height = 128;
+  cvs.width = cvs.height = 256;
   const ctx = cvs.getContext('2d');
   ctx.fillStyle = '#2a2a2a';
-  ctx.fillRect(0, 0, 128, 128);
-  for (let i = 0; i < 500; i++) {
-    const x = Math.random() * 128, y = Math.random() * 128;
-    const g = 30 + Math.random() * 40;
+  ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 2000; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const g = 25 + Math.random() * 50;
     ctx.fillStyle = `rgb(${g}, ${g}, ${g})`;
-    ctx.fillRect(x, y, 2, 2);
+    ctx.fillRect(x, y, 1 + Math.random() * 2, 1 + Math.random() * 2);
+  }
+  ctx.strokeStyle = 'rgba(10,10,10,0.5)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 20; i++) {
+    ctx.beginPath();
+    const x = Math.random() * 256, y = Math.random() * 256;
+    ctx.moveTo(x, y);
+    for (let j = 0; j < 5; j++) ctx.lineTo(x + (Math.random() - 0.5) * 40, y + (Math.random() - 0.5) * 40);
+    ctx.stroke();
   }
   const tex = new THREE.CanvasTexture(cvs);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
@@ -922,7 +927,6 @@ export function generateChunk(cx, cz, deps) {
   ground.receiveShadow = SETTINGS.shadows;
   group.add(ground);
 
-  // Дороги
   const hasRoadH = rand() < 0.35;
   const hasRoadV = rand() < 0.35;
   if (!worldState.roadTex) worldState.roadTex = makeRoadTexture();
@@ -961,7 +965,6 @@ export function generateChunk(cx, cz, deps) {
     group.add(road);
   }
 
-  // Обычные здания
   const isStartChunk = (cx === 0 && cz === 0);
   const hasBuilding = !isStartChunk && rand() < 0.32;
   if (hasBuilding) {
@@ -985,7 +988,6 @@ export function generateChunk(cx, cz, deps) {
     }
   }
 
-  // Специальные здания
   const specialRoll = rand();
   if (!isStartChunk) {
     if (specialRoll < 0.04) {
@@ -1007,7 +1009,6 @@ export function generateChunk(cx, cz, deps) {
     }
   }
 
-  // Деревья
   const treeCount = SETTINGS.trees + Math.floor(rand() * (SETTINGS.trees * 0.5));
   for (let i = 0; i < treeCount; i++) {
     const x = baseX + rand() * CHUNK_SIZE;
@@ -1018,7 +1019,6 @@ export function generateChunk(cx, cz, deps) {
     createTree(x, z, rand, group);
   }
 
-  // Трава
   const grassDensity = SETTINGS.grass;
   if (grassDensity > 0) {
     const grassMaterial = new THREE.MeshBasicMaterial({
@@ -1034,7 +1034,6 @@ export function generateChunk(cx, cz, deps) {
     }
   }
 
-  // Цветы
   const flowerCount = 12 + Math.floor(rand() * 12);
   for (let i = 0; i < flowerCount; i++) {
     const fx = baseX + rand() * CHUNK_SIZE;
@@ -1045,7 +1044,6 @@ export function generateChunk(cx, cz, deps) {
     createFlower(fx, fz, group);
   }
 
-  // Бабочки
   const butterflyCount = SETTINGS.butterflies > 0 ? Math.max(1, Math.floor(SETTINGS.butterflies * (0.5 + rand()))) : 0;
   for (let i = 0; i < butterflyCount; i++) {
     const bx = baseX + 10 + rand() * (CHUNK_SIZE - 20);
@@ -1089,22 +1087,46 @@ export function removeChunk(cx, cz, player) {
   for (let i = worldState.buildings.length - 1; i >= 0; i--) {
     if (worldState.buildings[i].chunkKey === key) worldState.buildings.splice(i, 1);
   }
-
-  const px = player.position.x, pz = player.position.z;
-  const maxDist = (SETTINGS.viewDist + 1) * CHUNK_SIZE;
-  worldState.obstacles = worldState.obstacles.filter(o => Math.hypot(o.x - px, o.z - pz) < maxDist);
 }
+
+// ============ ОЧЕРЕДЬ ГЕНЕРАЦИИ ЧАНКОВ ============
+const chunkQueue = [];
+let chunkGenCooldown = 0;
+let chunkCleanupTick = 0;
 
 export function updateChunks(player, deps) {
   const px = Math.floor(player.position.x / CHUNK_SIZE);
   const pz = Math.floor(player.position.z / CHUNK_SIZE);
-  const needed = new Set();
   const view = SETTINGS.viewDist;
+
   for (let dx = -view; dx <= view; dx++) {
     for (let dz = -view; dz <= view; dz++) {
       const cx = px + dx, cz = pz + dz;
-      needed.add(getChunkKey(cx, cz));
-      generateChunk(cx, cz, deps);
+      const key = getChunkKey(cx, cz);
+      if (!worldState.chunks.has(key) && !chunkQueue.some(q => q.key === key)) {
+        chunkQueue.push({ cx, cz, key, dist: Math.hypot(dx, dz) });
+      }
+    }
+  }
+
+  chunkQueue.sort((a, b) => a.dist - b.dist);
+
+  if (chunkGenCooldown > 0) {
+    chunkGenCooldown--;
+  } else if (chunkQueue.length > 0) {
+    const next = chunkQueue.shift();
+    generateChunk(next.cx, next.cz, deps);
+    chunkGenCooldown = 2;
+  }
+
+  chunkCleanupTick++;
+  if (chunkCleanupTick < 60) return;
+  chunkCleanupTick = 0;
+
+  const needed = new Set();
+  for (let dx = -view; dx <= view; dx++) {
+    for (let dz = -view; dz <= view; dz++) {
+      needed.add(getChunkKey(px + dx, pz + dz));
     }
   }
   for (const key of worldState.chunks.keys()) {

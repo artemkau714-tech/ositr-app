@@ -126,6 +126,7 @@ let allDrones = [];
 let nearestLoot = null;
 
 let sunLight = null, hemiLight = null, ambientLight = null;
+let skyMesh = null;
 
 // FIX: yaw и pitch должны быть объявлены — иначе ReferenceError "yaw is not defined"
 let yaw = 0;
@@ -368,6 +369,96 @@ const JUMP = 9;
 const DRONE_ACTIVATE_DIST = 35;
 const DRONES_GLOBAL_MAX = 5;
 
+// ============ НЕБО (ПРОЦЕДУРНОЕ) ============
+function createSkyMaterial() {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      topColor:    { value: new THREE.Color(0x1a6dcc) },
+      bottomColor: { value: new THREE.Color(0xd8e8f5) },
+      offset:      { value: 20 },
+      exponent:    { value: 0.6 }
+    },
+    vertexShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = worldPosition.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      uniform float offset;
+      uniform float exponent;
+      varying vec3 vWorldPosition;
+      void main() {
+        float h = normalize(vWorldPosition + offset).y;
+        gl_FragColor = vec4(mix(bottomColor, topColor, max(pow(max(h, 0.0), exponent), 0.0)), 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false
+  });
+}
+
+function initSky() {
+  const skyGeo = new THREE.SphereGeometry(5000, 24, 12);
+  const skyMat = createSkyMaterial();
+  skyMesh = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(skyMesh);
+  updateSkyColors(12);
+}
+
+function updateSkyColors(timeOfDay) {
+  if (!skyMesh) return;
+  const t = timeOfDay;
+  let top, bottom;
+
+  if (t < 5 || t > 21) {
+    top = new THREE.Color(0x0a0a2a);
+    bottom = new THREE.Color(0x1a1a3a);
+  } else if (t < 7) {
+    const k = (t - 5) / 2;
+    top = new THREE.Color(0x0a0a2a).lerp(new THREE.Color(0x4a7aad), k);
+    bottom = new THREE.Color(0x1a1a3a).lerp(new THREE.Color(0xff9966), k);
+  } else if (t < 10) {
+    const k = (t - 7) / 3;
+    top = new THREE.Color(0x4a7aad).lerp(new THREE.Color(0x1a6dcc), k);
+    bottom = new THREE.Color(0xff9966).lerp(new THREE.Color(0xd8e8f5), k);
+  } else if (t < 16) {
+    top = new THREE.Color(0x1a6dcc);
+    bottom = new THREE.Color(0xd8e8f5);
+  } else if (t < 19) {
+    const k = (t - 16) / 3;
+    top = new THREE.Color(0x1a6dcc).lerp(new THREE.Color(0xff7744), k);
+    bottom = new THREE.Color(0xd8e8f5).lerp(new THREE.Color(0xff7744), k);
+  } else {
+    const k = (t - 19) / 2;
+    top = new THREE.Color(0xff7744).lerp(new THREE.Color(0x0a0a2a), k);
+    bottom = new THREE.Color(0xff7744).lerp(new THREE.Color(0x1a1a3a), k);
+  }
+
+  skyMesh.material.uniforms.topColor.value.copy(top);
+  skyMesh.material.uniforms.bottomColor.value.copy(bottom);
+  if (scene.fog) scene.fog.color.copy(bottom);
+}
+
+function updateSunPosition(timeOfDay) {
+  if (!sunLight) return;
+  const dayProgress = (timeOfDay - 6) / 12;
+  const elevation = Math.sin(dayProgress * Math.PI) * Math.PI / 2;
+  const azimuth = Math.PI / 4;
+  sunLight.position.set(
+    Math.cos(elevation) * Math.cos(azimuth) * 150,
+    Math.sin(elevation) * 150,
+    Math.cos(elevation) * Math.sin(azimuth) * 150
+  );
+  const heightK = Math.max(0, Math.sin(elevation));
+  sunLight.color.setHSL(0.08, 1.0 - heightK * 0.6, 0.6 + heightK * 0.3);
+  sunLight.intensity = 0.8 + heightK * 1.4;
+}
+
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 function init() {
   if (isTouch) document.body.classList.add('is-touch');
@@ -388,7 +479,7 @@ function init() {
   scene.add(camera);
 
   renderer = new THREE.WebGLRenderer({ antialias: !isTouch, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, SETTINGS.resolution));
+  renderer.setPixelRatio(Math.min(devicePixelRatio, SETTINGS.resolution, isTouch ? 1.0 : 10.0));
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = SETTINGS.shadows && !isTouch;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -400,32 +491,32 @@ function init() {
   clock = new THREE.Clock();
   initAmbient();
 
-  sunLight = new THREE.DirectionalLight(0xfff5e0, 1.4);
-  sunLight.position.set(80, 150, 50);
-  if (SETTINGS.shadows && !isTouch) {
-    sunLight.castShadow = true;
-    sunLight.shadow.mapSize.set(1024, 1024);
-    sunLight.shadow.camera.left = -80;
-    sunLight.shadow.camera.right = 80;
-    sunLight.shadow.camera.top = 80;
-    sunLight.shadow.camera.bottom = -80;
-    sunLight.shadow.camera.far = 250;
-    sunLight.shadow.bias = -0.0004;
-    sunLight.shadow.normalBias = 0.02;
-  }
-  scene.add(sunLight);
+  sunLight = new THREE.DirectionalLight(0xfff0d8, 2.0);
+sunLight.position.set(80, 150, 50);
+if (SETTINGS.shadows) {
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(isTouch ? 512 : 2048, isTouch ? 512 : 2048);
+  sunLight.shadow.camera.left = -40;
+  sunLight.shadow.camera.right = 40;
+  sunLight.shadow.camera.top = 40;
+  sunLight.shadow.camera.bottom = -40;
+  sunLight.shadow.camera.far = 150;
+  sunLight.shadow.bias = -0.0003;
+  sunLight.shadow.normalBias = 0.03;
+}
+scene.add(sunLight);
 
-  hemiLight = new THREE.HemisphereLight(0xa8d0ff, 0x3a5a2a, 0.85);
-  scene.add(hemiLight);
-  ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
-  scene.add(ambientLight);
+hemiLight = new THREE.HemisphereLight(0x9ec8ff, 0x4a6a3a, 0.6);
+scene.add(hemiLight);
 
-  const rim = new THREE.DirectionalLight(0xffdd88, 0.4);
-  rim.position.set(-50, 60, -80);
-  scene.add(rim);
+ambientLight = new THREE.AmbientLight(0xfff5e0, 0.1);
+scene.add(ambientLight);
 
-  WEATHER.init(scene, sunLight, hemiLight, ambientLight);
+WEATHER.init(scene, sunLight, hemiLight, ambientLight);
 
+// Небо
+initSky();
+  
   for (let i = 0; i < 8; i++) {
     const bird = createBird();
     scene.add(bird.group);
@@ -882,14 +973,6 @@ function spawnMilitaryBase(x, z) {
   const base = { group, x, z, groundH, radius: 14, droneTimer: 15, squadTimer: 20 };
   militaryBases.push(base);
 
-  const guardCount = 6 + Math.floor(Math.random() * 3);
-  for (let i = 0; i < guardCount; i++) {
-    const angle = (i / guardCount) * Math.PI * 2;
-    const r = 6 + Math.random() * 4;
-    const npc = createNPC(x + Math.cos(angle) * r, z + Math.sin(angle) * r, `base_${militaryBases.length}`);
-    npc.state = 'guard';
-    npc.guardPost = { x: npc.group.position.x, z: npc.group.position.z };
-  }
 
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
@@ -1732,7 +1815,7 @@ function shoot() {
         d.normalize();
       }
       const tracer = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.03, 0.03, 1.2, 4),
+        new THREE.CylinderGeometry(0.20, 0.20, 1.2, 4),
         new THREE.MeshBasicMaterial({ color: currentWeapon.color, transparent: true, opacity: 0.95, depthWrite: false })
       );
       tracer.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), d);
@@ -2363,11 +2446,17 @@ function animate() {
   WIND.update(dt);
 
   if (started && !paused && SETTINGS.weather) {
-    WEATHER.update(dt, player.position);
-  } else if (started && !paused) {
-    WEATHER.timeOfDay += (24 / WEATHER.dayLength) * dt;
-    if (WEATHER.timeOfDay >= 24) WEATHER.timeOfDay -= 24;
-  }
+  WEATHER.update(dt, player.position);
+} else if (started && !paused) {
+  WEATHER.timeOfDay += (24 / WEATHER.dayLength) * dt;
+  if (WEATHER.timeOfDay >= 24) WEATHER.timeOfDay -= 24;
+}
+
+// Обновляем небо каждый кадр
+if (started && !paused) {
+  updateSkyColors(WEATHER.timeOfDay);
+  updateSunPosition(WEATHER.timeOfDay);
+}
 
   if (gameActive && started && !paused &&
       !document.getElementById('shop').classList.contains('open') &&
@@ -2375,8 +2464,6 @@ function animate() {
     updatePlayer(dt);
     updateDrones(dt);
     updateAllyDrones(dt);
-    updateNPCs(dt);
-    updateNpcBullets(dt);
     updateBullets(dt);
     updateRockets(dt);
     updateRocketProjectiles(dt);
@@ -2459,7 +2546,8 @@ function syncSettingsUI() {
 
 function applySettings() {
   if (!renderer) return;
-  renderer.setPixelRatio(Math.min(devicePixelRatio, SETTINGS.resolution));
+  const maxPR = isTouch ? 1.0 : 10.0;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, SETTINGS.resolution, maxPR));
   renderer.shadowMap.enabled = SETTINGS.shadows && !isTouch;
 
   if (sunLight) {
@@ -2691,8 +2779,8 @@ function setupUIEvents() {
   });
   bindCheckbox('setShadows', 'shadows', () => applySettings());
   bindSlider('setResolution', 'resolution', v => v.toFixed(1) + 'x', () => {
-    renderer.setPixelRatio(Math.min(devicePixelRatio, SETTINGS.resolution));
-  });
+  applySettings();
+});
   bindCheckbox('setAmbientSound', 'ambientSound');
 
   // ═══ МУЗЫКА ═══
