@@ -1,12 +1,22 @@
 import * as THREE from 'three';
 import {
-  CHUNK_SIZE, worldState,
+  CHUNK_SIZE, worldState, BIOME,
   getTerrainHeight, addObstacle, checkCollision,
   updateChunks, buildVehicleMesh,
   buildHeliMesh, buildApacheMesh, buildPlaneMesh, buildJetMesh,
   createBird, wildlife, WIND,
-  WEATHER, SETTINGS
+  WEATHER, SETTINGS,
+  updateBiomeAnimated
 } from './world.js';
+
+import {
+  loadCitizenModel,
+  isCitizenModelLoaded,
+  createCitizen,
+  updateCitizen,
+  damageCitizen
+} from './citizen.js';
+
 
 // ============ ПЛАТФОРМА ============
 const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0 ||
@@ -85,6 +95,7 @@ let scene, camera, renderer, clock;
 let player, velocity, onGround;
 let bullets = [], rockets = [], grenades = [], bombs = [], pickups = [], flames = [], laserBeams = [], rocketProjectiles = [];
 let allyDrones = [], npcs = [], npcBullets = [], militaryBases = [];
+let citizens = [];
 let ownedAllyDrones = new Set();
 let ownedRockets = new Set();
 let selectedRocket = null;
@@ -109,7 +120,6 @@ let vehicleBody = null;
 let vehicleLean = { x: 0, z: 0 };
 let isFirstPerson = true;
 
-// Оружие в руках
 let viewModel = null;
 let viewModelGroup = null;
 let viewBobTimer = 0;
@@ -128,9 +138,36 @@ let nearestLoot = null;
 let sunLight = null, hemiLight = null, ambientLight = null;
 let skyMesh = null;
 
-// FIX: yaw и pitch должны быть объявлены — иначе ReferenceError "yaw is not defined"
 let yaw = 0;
 let pitch = 0;
+
+// ============ МИРЫ ============
+const WORLDS_KEY = 'drone_worlds';
+
+const AVAILABLE_MAPS = {
+  default: {
+    id: 'default',
+    name: 'Классика',
+    icon: '🌍',
+    desc: 'Стандартный мир · Леса, поля, военные базы'
+  },
+  desert: {
+    id: 'desert',
+    name: 'Пустыня',
+    icon: '🏜️',
+    desc: 'Жаркий мир · Дюны, кактусы, оазисы'
+  },
+  snow_city: {
+    id: 'snow_city',
+    name: 'Мегаполис',
+    icon: '🏙️',
+    desc: 'Снежный город · Небоскрёбы, фонари, сугробы'
+  }
+};
+
+let currentWorldId = null;
+let selectedMapId = 'default';
+let worldToDelete = null;
 
 // ============ МУЗЫКА ============
 let bgMusic = null;
@@ -369,7 +406,7 @@ const JUMP = 9;
 const DRONE_ACTIVATE_DIST = 35;
 const DRONES_GLOBAL_MAX = 5;
 
-// ============ НЕБО (ПРОЦЕДУРНОЕ) ============
+// ============ НЕБО ============
 function createSkyMaterial() {
   return new THREE.ShaderMaterial({
     uniforms: {
@@ -415,24 +452,31 @@ function updateSkyColors(timeOfDay) {
   const t = timeOfDay;
   let top, bottom;
 
+  const isDesert = BIOME.current === 'desert';
+  const isSnow = BIOME.current === 'snow_city';
+
   if (t < 5 || t > 21) {
-    top = new THREE.Color(0x0a0a2a);
-    bottom = new THREE.Color(0x1a1a3a);
+    top = new THREE.Color(isSnow ? 0x1a1a3a : 0x0a0a2a);
+    bottom = new THREE.Color(isSnow ? 0x2a2a4a : 0x1a1a3a);
   } else if (t < 7) {
     const k = (t - 5) / 2;
-    top = new THREE.Color(0x0a0a2a).lerp(new THREE.Color(0x4a7aad), k);
-    bottom = new THREE.Color(0x1a1a3a).lerp(new THREE.Color(0xff9966), k);
+    top = new THREE.Color(0x0a0a2a).lerp(new THREE.Color(isSnow ? 0x5a7aad : 0x4a7aad), k);
+    bottom = new THREE.Color(0x1a1a3a).lerp(new THREE.Color(isSnow ? 0xddc8e0 : 0xff9966), k);
   } else if (t < 10) {
     const k = (t - 7) / 3;
-    top = new THREE.Color(0x4a7aad).lerp(new THREE.Color(0x1a6dcc), k);
-    bottom = new THREE.Color(0xff9966).lerp(new THREE.Color(0xd8e8f5), k);
+    const topTarget = isDesert ? 0x4a9de0 : isSnow ? 0x8ab4e0 : 0x1a6dcc;
+    const bottomTarget = isDesert ? 0xf0d8a8 : isSnow ? 0xe0ecf8 : 0xd8e8f5;
+    top = new THREE.Color(0x4a7aad).lerp(new THREE.Color(topTarget), k);
+    bottom = new THREE.Color(0xff9966).lerp(new THREE.Color(bottomTarget), k);
   } else if (t < 16) {
-    top = new THREE.Color(0x1a6dcc);
-    bottom = new THREE.Color(0xd8e8f5);
+    top = new THREE.Color(isDesert ? 0x4a9de0 : isSnow ? 0x8ab4e0 : 0x1a6dcc);
+    bottom = new THREE.Color(isDesert ? 0xf0d8a8 : isSnow ? 0xe0ecf8 : 0xd8e8f5);
   } else if (t < 19) {
     const k = (t - 16) / 3;
-    top = new THREE.Color(0x1a6dcc).lerp(new THREE.Color(0xff7744), k);
-    bottom = new THREE.Color(0xd8e8f5).lerp(new THREE.Color(0xff7744), k);
+    const topStart = isDesert ? 0x4a9de0 : isSnow ? 0x8ab4e0 : 0x1a6dcc;
+    const bottomStart = isDesert ? 0xf0d8a8 : isSnow ? 0xe0ecf8 : 0xd8e8f5;
+    top = new THREE.Color(topStart).lerp(new THREE.Color(isSnow ? 0xaa88cc : 0xff7744), k);
+    bottom = new THREE.Color(bottomStart).lerp(new THREE.Color(isSnow ? 0xdd99bb : 0xff7744), k);
   } else {
     const k = (t - 19) / 2;
     top = new THREE.Color(0xff7744).lerp(new THREE.Color(0x0a0a2a), k);
@@ -455,13 +499,275 @@ function updateSunPosition(timeOfDay) {
     Math.cos(elevation) * Math.sin(azimuth) * 150
   );
   const heightK = Math.max(0, Math.sin(elevation));
-  sunLight.color.setHSL(0.08, 1.0 - heightK * 0.6, 0.6 + heightK * 0.3);
+
+  if (BIOME.current === 'desert') {
+    sunLight.color.setHSL(0.10, 0.9 - heightK * 0.5, 0.65 + heightK * 0.25);
+  } else if (BIOME.current === 'snow_city') {
+    sunLight.color.setHSL(0.58, 0.15, 0.85 - heightK * 0.15);
+  } else {
+    sunLight.color.setHSL(0.08, 1.0 - heightK * 0.6, 0.6 + heightK * 0.3);
+  }
+
   sunLight.intensity = 0.8 + heightK * 1.4;
+}
+
+// ============ МИРЫ ============
+function getAllWorlds() {
+  try {
+    const raw = localStorage.getItem(WORLDS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveAllWorlds(worlds) {
+  try {
+    localStorage.setItem(WORLDS_KEY, JSON.stringify(worlds));
+  } catch (e) {
+    console.error('Ошибка сохранения миров:', e);
+  }
+}
+
+function createNewWorld(name, mapId) {
+  const world = {
+    id: 'world_' + Date.now(),
+    name: name || 'Мой мир',
+    mapId: mapId,
+    createdAt: Date.now(),
+    lastPlayed: Date.now(),
+    money: 0,
+    score: 0,
+    health: 100,
+    maxHealth: 100,
+    position: { x: 0, y: 0, z: 0 },
+    ownedWeapons: ['pistol'],
+    ownedVehicles: ['foot'],
+    currentWeapon: 'pistol',
+    currentVehicle: 'foot',
+    hero: 'artem',
+    playTime: 0
+  };
+  const worlds = getAllWorlds();
+  worlds.push(world);
+  saveAllWorlds(worlds);
+  return world;
+}
+
+function saveCurrentWorld() {
+  if (!currentWorldId) return;
+  const worlds = getAllWorlds();
+  const idx = worlds.findIndex(w => w.id === currentWorldId);
+  if (idx < 0) return;
+
+  worlds[idx].money = money;
+  worlds[idx].score = score;
+  worlds[idx].health = health;
+  worlds[idx].maxHealth = maxHealth;
+  worlds[idx].position = {
+    x: player ? player.position.x : 0,
+    y: player ? player.position.y : 0,
+    z: player ? player.position.z : 0
+  };
+  worlds[idx].ownedWeapons = Array.from(ownedWeapons);
+  worlds[idx].ownedVehicles = Array.from(ownedVehicles);
+  worlds[idx].currentWeapon = currentWeapon ? currentWeapon.id : 'pistol';
+  worlds[idx].currentVehicle = currentVehicle ? currentVehicle.id : 'foot';
+  worlds[idx].hero = currentHero ? currentHero.id : 'artem';
+  worlds[idx].lastPlayed = Date.now();
+
+  saveAllWorlds(worlds);
+}
+
+function loadWorld(worldId) {
+  const worlds = getAllWorlds();
+  const world = worlds.find(w => w.id === worldId);
+  if (!world) return null;
+
+  currentWorldId = worldId;
+
+  if (world.mapId === 'desert') BIOME.set('desert');
+  else if (world.mapId === 'snow_city') BIOME.set('snow_city');
+  else BIOME.set('forest');
+
+  money = world.money || 0;
+  score = world.score || 0;
+  maxHealth = world.maxHealth || 100;
+  health = world.health || maxHealth;
+
+  ownedWeapons = new Set(world.ownedWeapons || ['pistol']);
+  ownedVehicles = new Set(world.ownedVehicles || ['foot']);
+  currentWeapon = WEAPONS[world.currentWeapon] || WEAPONS.pistol;
+  currentVehicle = VEHICLES[world.currentVehicle] || VEHICLES.foot;
+  currentHero = HEROES[world.hero] || HEROES.artem;
+
+  if (world.position && player) {
+    player.position.set(world.position.x, world.position.y, world.position.z);
+  }
+
+  world.lastPlayed = Date.now();
+  saveAllWorlds(worlds);
+
+  return world;
+}
+
+function deleteWorld(worldId) {
+  const worlds = getAllWorlds().filter(w => w.id !== worldId);
+  saveAllWorlds(worlds);
+}
+
+function renderWorldsList() {
+  const el = document.getElementById('worldsList');
+  if (!el) return;
+  el.innerHTML = '';
+
+  const worlds = getAllWorlds().sort((a, b) => b.lastPlayed - a.lastPlayed);
+
+  if (worlds.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'worlds-empty';
+    empty.innerHTML = 'Пока нет миров.<br>Создай первый! 👇';
+    el.appendChild(empty);
+    return;
+  }
+
+  for (const w of worlds) {
+    const card = document.createElement('div');
+    card.className = 'world-card';
+    const map = AVAILABLE_MAPS[w.mapId] || AVAILABLE_MAPS.default;
+
+    card.innerHTML = `
+      <div class="world-icon">${map.icon}</div>
+      <div class="world-info">
+        <div class="world-name">${w.name}</div>
+        <div class="world-stats">💰 ${w.money} $ · 🎯 ${w.score} · ${map.name}</div>
+      </div>
+      <button class="world-delete" data-id="${w.id}">✕</button>
+    `;
+
+    card.addEventListener('click', (e) => {
+      if (e.target.classList.contains('world-delete')) return;
+      sndMenuClick();
+      document.getElementById('worldsModal').classList.remove('show');
+      loadWorld(w.id);
+      startGame();
+    });
+
+    const delBtn = card.querySelector('.world-delete');
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sndMenuClick();
+      openDeleteModal(w);
+    });
+
+    el.appendChild(card);
+  }
+}
+
+function renderMapsList() {
+  const el = document.getElementById('mapsList');
+  if (!el) return;
+  el.innerHTML = '';
+
+  for (const id in AVAILABLE_MAPS) {
+    const map = AVAILABLE_MAPS[id];
+    const card = document.createElement('div');
+    card.className = 'map-card' + (id === selectedMapId ? ' selected' : '');
+    card.innerHTML = `
+      <div class="map-icon">${map.icon}</div>
+      <div class="map-info">
+        <div class="map-name">${map.name}</div>
+        <div class="map-desc">${map.desc}</div>
+      </div>
+    `;
+    card.addEventListener('click', () => {
+      sndMenuClick();
+      selectedMapId = id;
+      renderMapsList();
+    });
+    el.appendChild(card);
+  }
+}
+
+function openDeleteModal(world) {
+  worldToDelete = world;
+  document.getElementById('deleteWorldName').textContent = world.name;
+  document.getElementById('deleteWorldStats').textContent =
+    `💰 ${world.money} $ · 🎯 ${world.score} сбито`;
+  document.getElementById('deleteWorldModal').classList.add('show');
+}
+
+function closeDeleteModal() {
+  worldToDelete = null;
+  document.getElementById('deleteWorldModal').classList.remove('show');
+}
+
+function confirmDeleteWorld() {
+  if (!worldToDelete) return;
+  sndMenuClick();
+  deleteWorld(worldToDelete.id);
+  closeDeleteModal();
+  renderWorldsList();
+}
+
+function startGame() {
+  document.getElementById('mainMenu').style.display = 'none';
+  document.getElementById('worldsModal').classList.remove('show');
+  document.getElementById('createWorldModal').classList.remove('show');
+  gameActive = true;
+  started = true;
+
+  const worlds = getAllWorlds();
+  const w = worlds.find(x => x.id === currentWorldId);
+  if (w) {
+    if (w.mapId === 'desert') BIOME.set('desert');
+    else if (w.mapId === 'snow_city') BIOME.set('snow_city');
+    else BIOME.set('forest');
+  }
+
+  document.body.classList.add('playing');
+  if (!isTouch) renderer.domElement.requestPointerLock();
+// Показываем кнопку переключения оружия
+const toggleBtn = document.getElementById('weaponToggleBtn');
+if (toggleBtn) toggleBtn.style.display = 'block';
+
+  if (maxHealth <= 100) {
+    maxHealth = 100 + currentHero.hpBonus;
+  }
+  if (health <= 0) health = maxHealth;
+
+  playMusic();
+
+  if (money < 5000 && !currentWorldId) {
+    money = 5000;
+    setTimeout(() => showHint('💰 Стартовый капитал: 5000 $'), 500);
+  }
+
+  updateHpUI(); updateAmmoUI(); updateMoneyUI(); updateHUDNames();
+  updateFlyButtons();
+  updateViewWeapon();
+  rebuildPlayer();
+  updateChunks(player, getWorldDeps());
+
+  if (window._worldAutoSave) clearInterval(window._worldAutoSave);
+  window._worldAutoSave = setInterval(() => {
+    if (gameActive && !paused) saveCurrentWorld();
+  }, 30000);
+
+  if (window._pickupInterval) clearInterval(window._pickupInterval);
+  window._pickupInterval = setInterval(() => {
+    if (gameActive && !paused && pickups.length < 3) spawnPickup();
+  }, 20000);
+
+     const mapName = w && AVAILABLE_MAPS[w.mapId] ? AVAILABLE_MAPS[w.mapId].name : 'Мир';
+  showHint(`🌍 ${mapName} загружен`);
 }
 
 // ============ ИНИЦИАЛИЗАЦИЯ ============
 function init() {
   if (isTouch) document.body.classList.add('is-touch');
+
+  BIOME.set('forest');
 
   loadMusicSettings();
 
@@ -492,31 +798,35 @@ function init() {
   initAmbient();
 
   sunLight = new THREE.DirectionalLight(0xfff0d8, 2.0);
-sunLight.position.set(80, 150, 50);
-if (SETTINGS.shadows) {
-  sunLight.castShadow = true;
-  sunLight.shadow.mapSize.set(isTouch ? 512 : 2048, isTouch ? 512 : 2048);
-  sunLight.shadow.camera.left = -40;
-  sunLight.shadow.camera.right = 40;
-  sunLight.shadow.camera.top = 40;
-  sunLight.shadow.camera.bottom = -40;
-  sunLight.shadow.camera.far = 150;
-  sunLight.shadow.bias = -0.0003;
-  sunLight.shadow.normalBias = 0.03;
-}
-scene.add(sunLight);
+  sunLight.position.set(80, 150, 50);
+  if (SETTINGS.shadows) {
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.set(isTouch ? 512 : 2048, isTouch ? 512 : 2048);
+    sunLight.shadow.camera.left = -40;
+    sunLight.shadow.camera.right = 40;
+    sunLight.shadow.camera.top = 40;
+    sunLight.shadow.camera.bottom = -40;
+    sunLight.shadow.camera.far = 150;
+    sunLight.shadow.bias = -0.0003;
+    sunLight.shadow.normalBias = 0.03;
+  }
+  scene.add(sunLight);
 
-hemiLight = new THREE.HemisphereLight(0x9ec8ff, 0x4a6a3a, 0.6);
-scene.add(hemiLight);
+  hemiLight = new THREE.HemisphereLight(0x9ec8ff, 0x4a6a3a, 0.6);
+  scene.add(hemiLight);
 
-ambientLight = new THREE.AmbientLight(0xfff5e0, 0.1);
-scene.add(ambientLight);
+  ambientLight = new THREE.AmbientLight(0xfff5e0, 0.1);
+  scene.add(ambientLight);
 
-WEATHER.init(scene, sunLight, hemiLight, ambientLight);
+  WEATHER.init(scene, sunLight, hemiLight, ambientLight);
 
-// Небо
-initSky();
-  
+  initSky();
+
+  // Загружаем модель горожанина
+  loadCitizenModel('npc.glb').then(() => {
+    console.log('Горожанин готов к спавну');
+  });
+
   for (let i = 0; i < 8; i++) {
     const bird = createBird();
     scene.add(bird.group);
@@ -557,8 +867,18 @@ function getWorldDeps() {
     ownedWeapons,
     WEAPONS,
     player,
-    onSpawnBase: spawnMilitaryBase
+    onSpawnBase: spawnMilitaryBase,
+    onSpawnCitizen: spawnCitizen
   };
+}
+
+function spawnCitizen(x, z) {
+  if (player) {
+    const d = Math.hypot(x - player.position.x, z - player.position.z);
+    if (d > 200) return;
+  }
+  const citizen = createCitizen(x, z, scene);
+  citizens.push(citizen);
 }
 
 // ============ ОРУЖИЕ В РУКАХ ============
@@ -973,7 +1293,6 @@ function spawnMilitaryBase(x, z) {
   const base = { group, x, z, groundH, radius: 14, droneTimer: 15, squadTimer: 20 };
   militaryBases.push(base);
 
-
   for (let i = 0; i < 8; i++) {
     const angle = (i / 8) * Math.PI * 2;
     addObstacle(x + Math.cos(angle) * 13, z + Math.sin(angle) * 13, 1.2);
@@ -1183,6 +1502,62 @@ function updateNpcBullets(dt) {
     if (b.position.y <= groundH || b.userData.life <= 0) {
       scene.remove(b);
       npcBullets.splice(i, 1);
+    }
+  }
+}
+
+// ============ ГОРОЖАНЕ ============
+function updateCitizens(dt) {
+  if (!player) return;
+
+  for (let i = citizens.length - 1; i >= 0; i--) {
+    const c = citizens[i];
+
+    const result = updateCitizen(c, dt, player.position, worldState.obstacles, checkCollision);
+
+    if (result && result.type === 'attack') {
+      const dist = Math.hypot(
+        player.position.x - c.group.position.x,
+        player.position.z - c.group.position.z
+      );
+      if (dist < c.attackRange + 0.5) {
+        damagePlayer(result.damage);
+        noise(0.1, 0.4, 600, 200);
+        tone(150, 'square', 0.08, 0.2, 80);
+      }
+    }
+
+    if (result === 'dead') {
+      if (!c._deadTime) c._deadTime = 0;
+      c._deadTime += dt;
+      if (c._deadTime > 5) {
+        scene.remove(c.group);
+        citizens.splice(i, 1);
+      }
+      continue;
+    }
+
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      const b = bullets[j];
+      const center = c.group.position.clone();
+      center.y += 1.0;
+
+      if (b.position.distanceTo(center) < 0.8) {
+        scene.remove(b);
+        bullets.splice(j, 1);
+        damageCitizen(c, b.userData.damage || 1);
+        sndHit();
+        break;
+      }
+    }
+
+    for (let j = flames.length - 1; j >= 0; j--) {
+      const f = flames[j];
+      const center = c.group.position.clone();
+      center.y += 1.0;
+      if (f.position.distanceTo(center) < 1.0) {
+        damageCitizen(c, f.userData.damage * 0.3);
+      }
     }
   }
 }
@@ -1861,6 +2236,10 @@ function explodeGrenade(pos, radius, damage) {
     const n = npcs[i];
     if (n.group.position.distanceTo(pos) < radius) { n.hp -= damage; if (n.hp <= 0) { scene.remove(n.group); npcs.splice(i, 1); money += 200; score++; updateMoneyUI(); } }
   }
+  for (let i = citizens.length - 1; i >= 0; i--) {
+    const c = citizens[i];
+    if (c.group.position.distanceTo(pos) < radius) damageCitizen(c, damage);
+  }
   const pd = pos.distanceTo(player.position);
   if (pd < radius) damagePlayer(damage * 0.4 * (1 - pd/radius));
 }
@@ -2006,6 +2385,11 @@ function explodeRocketProjectile(pos, ud) {
     const dist = n.group.position.distanceTo(pos);
     if (dist < ud.blastRadius) { n.hp -= ud.blastDamage * (1 - dist/ud.blastRadius); if (n.hp <= 0) { scene.remove(n.group); npcs.splice(i, 1); money += 200; score++; updateMoneyUI(); } }
   }
+  for (let i = citizens.length - 1; i >= 0; i--) {
+    const c = citizens[i];
+    const dist = c.group.position.distanceTo(pos);
+    if (dist < ud.blastRadius) damageCitizen(c, ud.blastDamage * 0.5);
+  }
   if (ud.cluster > 0) {
     for (let i = 0; i < ud.cluster; i++) {
       const angle = (i / ud.cluster) * Math.PI * 2;
@@ -2038,6 +2422,10 @@ function updateRockets(dt) {
       for (let j = npcs.length - 1; j >= 0; j--) {
         const n = npcs[j];
         if (n.group.position.distanceTo(r.position) < ud.blastRadius) { n.hp -= ud.blastDamage; if (n.hp <= 0) { scene.remove(n.group); npcs.splice(j, 1); money += 200; score++; updateMoneyUI(); } }
+      }
+      for (let j = citizens.length - 1; j >= 0; j--) {
+        const c = citizens[j];
+        if (c.group.position.distanceTo(r.position) < ud.blastRadius) damageCitizen(c, ud.blastDamage);
       }
       const pd = r.position.distanceTo(player.position);
       if (pd < ud.blastRadius) damagePlayer(ud.blastDamage * 0.6 * (1 - pd/ud.blastRadius));
@@ -2165,7 +2553,7 @@ function updatePlayer(dt) {
 
   const running = keys['ShiftLeft'] || keys['ShiftRight'] || touchRun;
   const speedMul = (zoomed ? 0.5 : 1) * currentVehicle.speed * currentHero.speedMult;
-  const playerRadius = currentVehicle.id === 'foot' ? 0.5 : 1.2 * currentVehicle.size;
+  const playerRadius = currentVehicle.id === 'foot' ? 1.0 : 1.8 * currentVehicle.size;
 
   if (move.lengthSq() > 0) {
     if (move.length() > 1) move.normalize();
@@ -2416,6 +2804,8 @@ function updateHpUI() {
 }
 
 function gameOver() {
+  saveCurrentWorld();
+  BIOME.set('forest');
   gameActive = false;
   paused = false;
   document.body.classList.remove('playing');
@@ -2446,21 +2836,21 @@ function animate() {
   WIND.update(dt);
 
   if (started && !paused && SETTINGS.weather) {
-  WEATHER.update(dt, player.position);
-} else if (started && !paused) {
-  WEATHER.timeOfDay += (24 / WEATHER.dayLength) * dt;
-  if (WEATHER.timeOfDay >= 24) WEATHER.timeOfDay -= 24;
-}
+    WEATHER.update(dt, player.position);
+  } else if (started && !paused) {
+    WEATHER.timeOfDay += (24 / WEATHER.dayLength) * dt;
+    if (WEATHER.timeOfDay >= 24) WEATHER.timeOfDay -= 24;
+  }
 
-// Обновляем небо каждый кадр
-if (started && !paused) {
-  updateSkyColors(WEATHER.timeOfDay);
-  updateSunPosition(WEATHER.timeOfDay);
-}
+  if (started && !paused) {
+    updateSkyColors(WEATHER.timeOfDay);
+    updateSunPosition(WEATHER.timeOfDay);
+  }
 
   if (gameActive && started && !paused &&
       !document.getElementById('shop').classList.contains('open') &&
       !document.getElementById('inventory').classList.contains('open')) {
+    updateBiomeAnimated(dt, scene);
     updatePlayer(dt);
     updateDrones(dt);
     updateAllyDrones(dt);
@@ -2473,6 +2863,10 @@ if (started && !paused) {
     updateBombs(dt);
     updatePickups(dt);
     updateReload(dt);
+
+    updateNPCs(dt);
+    updateNpcBullets(dt);
+    updateCitizens(dt);
 
     wildlife.update(dt, scene, player.position);
 
@@ -2506,7 +2900,7 @@ function applyPromo() {
   }, 2000);
 }
 
-// ============ НАСТРОЙКИ UI ============
+// ============ НАСТРОЙКИ ============
 function syncSettingsUI() {
   const setVal = (id, val) => {
     const input = document.getElementById(id);
@@ -2570,6 +2964,19 @@ function clearAllChunks() {
 
 // ============ UI EVENTS ============
 function setupUIEvents() {
+  // === КНОПКА ПЕРЕКЛЮЧЕНИЯ МЕЧ/ОРУЖИЕ ===
+const weaponToggleBtn = document.getElementById('weaponToggleBtn');
+if (weaponToggleBtn) {
+  weaponToggleBtn.addEventListener('click', () => {
+    if (gameActive && !paused) toggleKnifeMode();
+  });
+  weaponToggleBtn.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (gameActive && !paused) toggleKnifeMode();
+  }, { passive: false });
+}
+
   document.querySelectorAll('.hero-card').forEach(card => {
     card.addEventListener('click', () => {
       initAudio(); sndMenuClick();
@@ -2579,7 +2986,6 @@ function setupUIEvents() {
     });
   });
 
-  // ═══ ПАУЗА ═══
   const pauseModal = document.getElementById('pauseModal');
   const pauseBtn = document.getElementById('pauseBtn');
   const pauseResume = document.getElementById('pauseResume');
@@ -2618,6 +3024,7 @@ function setupUIEvents() {
   if (pauseExit) {
     pauseExit.addEventListener('click', () => {
       sndMenuClick();
+      saveCurrentWorld();
       paused = false;
       gameActive = false;
       started = false;
@@ -2631,25 +3038,47 @@ function setupUIEvents() {
 
   document.getElementById('playBtn').addEventListener('click', () => {
     initAudio(); sndMenuClick();
-    document.getElementById('mainMenu').style.display = 'none';
-    gameActive = true; started = true;
-    document.body.classList.add('playing');
-    if (!isTouch) renderer.domElement.requestPointerLock();
-    maxHealth = 100 + currentHero.hpBonus;
-    health = maxHealth;
+    document.getElementById('worldsModal').classList.add('show');
+    renderWorldsList();
+  });
 
-    playMusic();
+  document.getElementById('createWorldBtn').addEventListener('click', () => {
+    sndMenuClick();
+    document.getElementById('worldsModal').classList.remove('show');
+    document.getElementById('createWorldModal').classList.add('show');
+    document.getElementById('worldNameInput').value = 'Мир ' + (getAllWorlds().length + 1);
+    selectedMapId = 'default';
+    renderMapsList();
+  });
 
-    if (money < 5000) {
-      money = 5000;
-      setTimeout(() => showHint('💰 Стартовый капитал: 5000 $'), 500);
-    }
+  document.getElementById('confirmCreateWorldBtn').addEventListener('click', () => {
+    sndMenuClick();
+    const name = document.getElementById('worldNameInput').value.trim() || 'Мир';
+    const world = createNewWorld(name, selectedMapId);
+    document.getElementById('createWorldModal').classList.remove('show');
+    loadWorld(world.id);
+    startGame();
+  });
 
-    updateHpUI(); updateAmmoUI(); updateMoneyUI(); updateHUDNames();
-    updateFlyButtons();
-    updateViewWeapon();
-    updateChunks(player, getWorldDeps());
-    setInterval(() => { if (gameActive && pickups.length < 3) spawnPickup(); }, 20000);
+  document.getElementById('cancelCreateWorldBtn').addEventListener('click', () => {
+    sndMenuClick();
+    document.getElementById('createWorldModal').classList.remove('show');
+    document.getElementById('worldsModal').classList.add('show');
+    renderWorldsList();
+  });
+
+  document.getElementById('closeWorldsBtn').addEventListener('click', () => {
+    sndMenuClick();
+    document.getElementById('worldsModal').classList.remove('show');
+  });
+
+  document.getElementById('confirmDeleteWorldBtn').addEventListener('click', confirmDeleteWorld);
+  document.getElementById('cancelDeleteWorldBtn').addEventListener('click', () => {
+    sndMenuClick();
+    closeDeleteModal();
+  });
+  document.getElementById('deleteWorldModal').addEventListener('click', (e) => {
+    if (e.target.id === 'deleteWorldModal') closeDeleteModal();
   });
 
   document.getElementById('aboutBtn').addEventListener('click', () => {
@@ -2671,7 +3100,6 @@ function setupUIEvents() {
   document.getElementById('applyPromo').addEventListener('click', applyPromo);
   document.getElementById('promoInput').addEventListener('keydown', e => { if (e.key === 'Enter') applyPromo(); });
 
-  // ═══ НАСТРОЙКИ ═══
   const settingsModal = document.getElementById('settingsModal');
   const settingsBtn = document.getElementById('settingsBtn');
   const closeSettings = document.getElementById('closeSettings');
@@ -2779,11 +3207,10 @@ function setupUIEvents() {
   });
   bindCheckbox('setShadows', 'shadows', () => applySettings());
   bindSlider('setResolution', 'resolution', v => v.toFixed(1) + 'x', () => {
-  applySettings();
-});
+    applySettings();
+  });
   bindCheckbox('setAmbientSound', 'ambientSound');
 
-  // ═══ МУЗЫКА ═══
   const musicOnBtn = document.getElementById('musicOnBtn');
   const musicOffBtn = document.getElementById('musicOffBtn');
   const musicVolSlider = document.getElementById('setMusicVolume');
@@ -2816,6 +3243,16 @@ function setupUIEvents() {
     });
   }
 
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && gameActive && !paused) {
+      saveCurrentWorld();
+    }
+  });
+
+  window.addEventListener('beforeunload', () => {
+    if (gameActive) saveCurrentWorld();
+  });
+
   window.closeShop = closeShop;
   window.closeInventory = closeInventory;
   window.switchTab = switchTab;
@@ -2828,12 +3265,12 @@ animate();
 
 // ============ ЭКСПОРТ ДЛЯ TUTORIAL.JS ============
 window.gameAPI = {
-  // Получить ссылки
   getPlayer: () => player,
   getCamera: () => camera,
   getScene: () => scene,
   getDrones: () => allDrones,
   getNpcs: () => npcs,
+  getCitizens: () => citizens,
   getYaw: () => yaw,
   getPitch: () => pitch,
   getGameActive: () => gameActive,
@@ -2841,7 +3278,6 @@ window.gameAPI = {
   getStarted: () => started,
   isTouchDevice: () => isTouch,
 
-  // Изменения
   addMoney: (amount) => { money += amount; updateMoneyUI(); },
   setPaused: (v) => { paused = v; },
   setGameActive: (v) => { gameActive = v; },
@@ -2849,7 +3285,6 @@ window.gameAPI = {
   setPlayingClass: () => document.body.classList.add('playing'),
   removePlayingClass: () => document.body.classList.remove('playing'),
 
-  // Функции
   sndMenuClick: () => sndMenuClick(),
   spawnDrone: () => {
     const d = createDrone(player.position.x + 40, player.position.z + 40);
@@ -2871,8 +3306,7 @@ window.gameAPI = {
   },
   equipWeapon: (id) => equipWeapon(id),
 
-  // Проверки
   WEAPONS, VEHICLES, ALLY_DRONES, ROCKETS
 };
-
+  
 console.log('🎓 gameAPI готово — обучение доступно');

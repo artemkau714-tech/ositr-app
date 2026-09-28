@@ -1,8 +1,36 @@
 import * as THREE from 'three';
+import {
+  makeSandTexture,
+  getDesertHeight,
+  createCactus,
+  createRock,
+  createTumbleweed,
+  createPalm,
+  updateDesertAnimated
+} from './biome_desert.js';
+
+import {
+  makeSnowTexture,
+  getSnowCityHeight,
+  createBuilding as createCityBuilding,
+  createSnowTree,
+  createStreetLamp,
+  createSnowdrift,
+  createBench,
+  updateSnowCityAnimated
+} from './biome_snow_city.js';
 
 // ============ КОНСТАНТЫ ============
 export const CHUNK_SIZE = 20;
 export const VIEW_CHUNKS = 3;
+
+// ============ БИОМ ============
+export const BIOME = {
+  current: 'forest',
+  set(name) {
+    this.current = name;
+  }
+};
 
 // ============ НАСТРОЙКИ ============
 export const SETTINGS = {
@@ -59,44 +87,20 @@ export const SETTINGS = {
   applyPreset(name) {
     switch (name) {
       case 'low':
-        this.viewDist = 1;
-        this.grass = 0;
-        this.trees = 3;
-        this.butterflies = 0;
-        this.weather = false;
-        this.shadows = false;
-        this.resolution = 0.8;
-        this.ambientSound = false;
+        this.viewDist = 1; this.grass = 0; this.trees = 3; this.butterflies = 0;
+        this.weather = false; this.shadows = false; this.resolution = 0.8; this.ambientSound = false;
         break;
       case 'medium':
-        this.viewDist = 2;
-        this.grass = 3;
-        this.trees = 5;
-        this.butterflies = 1;
-        this.weather = false;
-        this.shadows = false;
-        this.resolution = 1.0;
-        this.ambientSound = true;
+        this.viewDist = 2; this.grass = 3; this.trees = 5; this.butterflies = 1;
+        this.weather = false; this.shadows = false; this.resolution = 1.0; this.ambientSound = true;
         break;
       case 'high':
-        this.viewDist = 2;
-        this.grass = 6;
-        this.trees = 8;
-        this.butterflies = 2;
-        this.weather = true;
-        this.shadows = false;
-        this.resolution = 1.2;
-        this.ambientSound = true;
+        this.viewDist = 2; this.grass = 6; this.trees = 8; this.butterflies = 2;
+        this.weather = true; this.shadows = false; this.resolution = 1.2; this.ambientSound = true;
         break;
       case 'ultra':
-        this.viewDist = 3;
-        this.grass = 10;
-        this.trees = 10;
-        this.butterflies = 3;
-        this.weather = true;
-        this.shadows = false;
-        this.resolution = 1.4;
-        this.ambientSound = true;
+        this.viewDist = 3; this.grass = 10; this.trees = 10; this.butterflies = 3;
+        this.weather = true; this.shadows = false; this.resolution = 1.4; this.ambientSound = true;
         break;
     }
     this.save();
@@ -111,6 +115,8 @@ export const worldState = {
   buildings: [],
   obstacles: [],
   grassTex: null,
+  sandTex: null,
+  snowTex: null,
   roadTex: null,
   scene: null
 };
@@ -126,7 +132,7 @@ export const WIND = {
   }
 };
 
-// ============ ВОДА (отключена) ============
+// ============ ВОДА ============
 export const WATER_LEVEL = -999;
 export function isWaterAt(x, z) { return false; }
 
@@ -157,25 +163,15 @@ export const WEATHER = {
     if (type === 'rain') this.createRain();
     else if (type === 'snow') this.createSnow();
     else if (type === 'fog') {
-      if (this.scene) {
-        this.scene.fog = new THREE.Fog(0xcccccc, 20, 100);
-      }
+      if (this.scene) this.scene.fog = new THREE.Fog(0xcccccc, 20, 100);
     } else {
-      if (this.scene) {
-        this.scene.fog = new THREE.FogExp2(0xa8c8e8, 0.005);
-      }
+      if (this.scene) this.scene.fog = new THREE.FogExp2(0xa8c8e8, 0.005);
     }
   },
 
   removeEffects() {
-    if (this.rainParticles && this.scene) {
-      this.scene.remove(this.rainParticles);
-      this.rainParticles = null;
-    }
-    if (this.snowParticles && this.scene) {
-      this.scene.remove(this.snowParticles);
-      this.snowParticles = null;
-    }
+    if (this.rainParticles && this.scene) { this.scene.remove(this.rainParticles); this.rainParticles = null; }
+    if (this.snowParticles && this.scene) { this.scene.remove(this.snowParticles); this.snowParticles = null; }
   },
 
   createRain() {
@@ -243,6 +239,10 @@ export const WEATHER = {
     this.currentLight += (targetLight - this.currentLight) * Math.min(1, dt * 2);
 
     if (this.sunLight) {
+      if (BIOME.current === 'desert') this.sunLight.color.setHex(0xffddaa);
+      else if (BIOME.current === 'snow_city') this.sunLight.color.setHex(0xe8f0ff);
+      else this.sunLight.color.setHex(0xfff5e0);
+
       this.sunLight.intensity = 1.4 * this.currentLight;
       const angle = (this.timeOfDay / 24) * Math.PI * 2 - Math.PI / 2;
       this.sunLight.position.set(
@@ -348,7 +348,7 @@ export const wildlife = {
   }
 };
 
-// ============ ТЕКСТУРЫ (256x256) ============
+// ============ ТЕКСТУРЫ ============
 export function makeGrassTexture() {
   const cvs = document.createElement('canvas');
   cvs.width = cvs.height = 256;
@@ -417,6 +417,14 @@ export function getTerrainHeight(x, z) {
   const startDist = Math.hypot(x, z);
   const flatStart = Math.max(0, Math.min(1, (startDist - 15) / 15));
   const mountainFactor = Math.max(0, Math.min(1, (startDist - 80) / 60));
+
+  if (BIOME.current === 'desert') {
+    return getDesertHeight(x, z, mountainFactor, flatStart);
+  }
+  if (BIOME.current === 'snow_city') {
+    return getSnowCityHeight(x, z, mountainFactor, flatStart);
+  }
+
   const base = terrainNoise(x, z) * flatStart;
   const mountains = Math.pow(Math.max(0, terrainNoise(x * 0.3 + 100, z * 0.3 + 100)), 2) * 0.8 * mountainFactor;
   const trench = Math.sin(x * 0.1) * Math.cos(z * 0.08);
@@ -425,15 +433,33 @@ export function getTerrainHeight(x, z) {
 }
 
 // ============ КОЛЛИЗИИ ============
-export function addObstacle(x, z, r) {
-  worldState.obstacles.push({ x, z, r });
+export function addObstacle(x, z, r, chunkKey) {
+  worldState.obstacles.push({ x, z, r, type: 'circle', chunkKey });
+}
+
+export function addBoxObstacle(cx, cz, w, d, chunkKey) {
+  worldState.obstacles.push({
+    x: cx, z: cz,
+    hw: w / 2, hd: d / 2,
+    type: 'box',
+    chunkKey
+  });
 }
 
 export function checkCollision(newX, newZ, playerRadius) {
   for (const ob of worldState.obstacles) {
-    const dx = newX - ob.x, dz = newZ - ob.z;
-    const minDist = ob.r + playerRadius;
-    if (dx*dx + dz*dz < minDist * minDist) return ob;
+    if (ob.type === 'box') {
+      // Прямоугольник — ищем ближайшую точку на прямоугольнике к новой позиции
+      const closestX = Math.max(ob.x - ob.hw, Math.min(newX, ob.x + ob.hw));
+      const closestZ = Math.max(ob.z - ob.hd, Math.min(newZ, ob.z + ob.hd));
+      const ddx = newX - closestX;
+      const ddz = newZ - closestZ;
+      if (ddx * ddx + ddz * ddz < playerRadius * playerRadius) return ob;
+    } else {
+      const dx = newX - ob.x, dz = newZ - ob.z;
+      const minDist = ob.r + playerRadius;
+      if (dx*dx + dz*dz < minDist * minDist) return ob;
+    }
   }
   return null;
 }
@@ -449,7 +475,7 @@ export function mulberry32(a) {
 }
 
 // ============ ДЕРЕВО ============
-function createTree(x, z, rand, group) {
+function createTree(x, z, rand, group, chunkKey) {
   const treeScale = 0.7 + rand() * 0.9;
   const trunkH = 3.5 * treeScale;
   const groundH = getTerrainHeight(x, z);
@@ -496,7 +522,7 @@ function createTree(x, z, rand, group) {
     }
   }
 
-  addObstacle(x, z, 0.6 * treeScale);
+  addObstacle(x, z, 0.6 * treeScale, chunkKey);
 }
 
 // ============ ТРАВА ============
@@ -765,7 +791,7 @@ export function randomWeaponFromLoot(ownedWeapons, WEAPONS) {
 }
 
 // ============ СПЕЦИАЛЬНЫЕ ЗДАНИЯ ============
-export function createBunker(x, z, rand, group) {
+export function createBunker(x, z, rand, group, chunkKey) {
   const bh = getTerrainHeight(x, z);
   const bunker = new THREE.Group();
   bunker.position.set(x, bh, z);
@@ -792,10 +818,10 @@ export function createBunker(x, z, rand, group) {
   light.position.set(-3, 10, -3); bunker.add(light);
 
   group.add(bunker);
-  addObstacle(x, z, 7);
+  addBoxObstacle(x, z, 10, 10, chunkKey);
 }
 
-export function createWarehouse(x, z, rand, group) {
+export function createWarehouse(x, z, rand, group, chunkKey) {
   const bh = getTerrainHeight(x, z);
   const wh = new THREE.Group();
   wh.position.set(x, bh, z);
@@ -829,9 +855,7 @@ export function createWarehouse(x, z, rand, group) {
   }
 
   group.add(wh);
-  addObstacle(x - 7, z, 3);
-  addObstacle(x + 7, z, 3);
-  addObstacle(x, z - 4, 3);
+  addBoxObstacle(x, z, 14, 8, chunkKey);
 }
 
 export function createAirstrip(x, z, rand, group) {
@@ -866,7 +890,7 @@ export function createAirstrip(x, z, rand, group) {
   group.add(strip);
 }
 
-export function createCommsTower(x, z, rand, group) {
+export function createCommsTower(x, z, rand, group, chunkKey) {
   const bh = getTerrainHeight(x, z);
   const tower = new THREE.Group();
   tower.position.set(x, bh, z);
@@ -885,7 +909,7 @@ export function createCommsTower(x, z, rand, group) {
   tower.add(beacon);
 
   group.add(tower);
-  addObstacle(x, z, 1);
+  addObstacle(x, z, 1, chunkKey);
 }
 
 // ============ ГЕНЕРАЦИЯ ЧАНКА ============
@@ -900,8 +924,18 @@ export function generateChunk(cx, cz, deps) {
   const seed = (cx * 73856093) ^ (cz * 19349663);
   const rand = mulberry32(seed);
 
-  if (!worldState.grassTex) worldState.grassTex = makeGrassTexture();
-  const groundTex = worldState.grassTex.clone();
+  // Текстура земли
+  let groundTex;
+  if (BIOME.current === 'desert') {
+    if (!worldState.sandTex) worldState.sandTex = makeSandTexture();
+    groundTex = worldState.sandTex.clone();
+  } else if (BIOME.current === 'snow_city') {
+    if (!worldState.snowTex) worldState.snowTex = makeSnowTexture();
+    groundTex = worldState.snowTex.clone();
+  } else {
+    if (!worldState.grassTex) worldState.grassTex = makeGrassTexture();
+    groundTex = worldState.grassTex.clone();
+  }
   groundTex.needsUpdate = true;
   groundTex.repeat.set(8, 8);
 
@@ -966,7 +1000,12 @@ export function generateChunk(cx, cz, deps) {
   }
 
   const isStartChunk = (cx === 0 && cz === 0);
-  const hasBuilding = !isStartChunk && rand() < 0.32;
+
+  // Обычные здания — только в лесу
+  const hasBuilding = !isStartChunk && rand() < (
+    BIOME.current === 'desert' ? 0.15 :
+    BIOME.current === 'snow_city' ? 0.0 : 0.32
+  );
   if (hasBuilding) {
     const bx = baseX + 14 + rand() * (CHUNK_SIZE - 32);
     const bz = baseZ + 14 + rand() * (CHUNK_SIZE - 32);
@@ -977,27 +1016,21 @@ export function generateChunk(cx, cz, deps) {
       building.chunkKey = key;
       group.add(building.group);
       worldState.buildings.push(building);
-      const w = building.w, d = building.d;
-      addObstacle(bx - w/2, bz - d/2, 1.5);
-      addObstacle(bx + w/2, bz - d/2, 1.5);
-      addObstacle(bx - w/2, bz + d/2, 1.5);
-      addObstacle(bx + w/2, bz + d/2, 1.5);
-      addObstacle(bx - w/2, bz, 1.5);
-      addObstacle(bx + w/2, bz, 1.5);
-      addObstacle(bx, bz - d/2, 1.5);
+      // ✅ Один прямоугольник вместо кучи точек
+      addBoxObstacle(bx, bz, building.w, building.d, key);
     }
   }
 
   const specialRoll = rand();
-  if (!isStartChunk) {
+  if (!isStartChunk && BIOME.current !== 'desert' && BIOME.current !== 'snow_city') {
     if (specialRoll < 0.04) {
       const bx = baseX + 20 + rand() * (CHUNK_SIZE - 40);
       const bz = baseZ + 20 + rand() * (CHUNK_SIZE - 40);
-      createBunker(bx, bz, rand, group);
+      createBunker(bx, bz, rand, group, key);
     } else if (specialRoll < 0.07) {
       const bx = baseX + 20 + rand() * (CHUNK_SIZE - 40);
       const bz = baseZ + 20 + rand() * (CHUNK_SIZE - 40);
-      createWarehouse(bx, bz, rand, group);
+      createWarehouse(bx, bz, rand, group, key);
     } else if (specialRoll < 0.09) {
       const bx = baseX + CHUNK_SIZE/2;
       const bz = baseZ + CHUNK_SIZE/2;
@@ -1005,21 +1038,142 @@ export function generateChunk(cx, cz, deps) {
     } else if (specialRoll < 0.13) {
       const bx = baseX + 20 + rand() * (CHUNK_SIZE - 40);
       const bz = baseZ + 20 + rand() * (CHUNK_SIZE - 40);
-      createCommsTower(bx, bz, rand, group);
+      createCommsTower(bx, bz, rand, group, key);
     }
   }
 
-  const treeCount = SETTINGS.trees + Math.floor(rand() * (SETTINGS.trees * 0.5));
-  for (let i = 0; i < treeCount; i++) {
-    const x = baseX + rand() * CHUNK_SIZE;
-    const z = baseZ + rand() * CHUNK_SIZE;
-    const onRoadH = hasRoadH && Math.abs(z - (baseZ + CHUNK_SIZE/2)) < 4;
-    const onRoadV = hasRoadV && Math.abs(x - (baseX + CHUNK_SIZE/2)) < 4;
-    if (onRoadH || onRoadV) continue;
-    createTree(x, z, rand, group);
+  // ============ СНЕЖНЫЙ ГОРОД ============
+  if (BIOME.current === 'snow_city') {
+    if (!isStartChunk) {
+      const gridStep = 14;
+      const gridOffset = 7;
+      const buildingsPerChunk = 2;
+
+      for (let gx = 0; gx < buildingsPerChunk; gx++) {
+        for (let gz = 0; gz < buildingsPerChunk; gz++) {
+          if (rand() < 0.25) continue;
+          const bx = baseX + gridOffset + gx * gridStep + (rand() - 0.5) * 2;
+          const bz = baseZ + gridOffset + gz * gridStep + (rand() - 0.5) * 2;
+          const onRoadH = hasRoadH && Math.abs(bz - (baseZ + CHUNK_SIZE/2)) < 6;
+          const onRoadV = hasRoadV && Math.abs(bx - (baseX + CHUNK_SIZE/2)) < 6;
+          if (onRoadH || onRoadV) continue;
+
+          // Городское здание
+          createCityBuilding(bx, bz, rand, group, getTerrainHeight);
+
+          // Коллизия — прямоугольник 10×10 (примерный размер дома)
+          addBoxObstacle(bx, bz, 10, 10, key);
+        }
+      }
+    }
+
+    if (hasRoadH) {
+      const roadZ = baseZ + CHUNK_SIZE/2;
+      for (let i = 0; i < 4; i++) {
+        const lx = baseX + 2.5 + i * 5 + (rand() - 0.5);
+        const side = (i % 2 === 0) ? -3.5 : 3.5;
+        createStreetLamp(lx, roadZ + side, rand, group, getTerrainHeight);
+      }
+    }
+    if (hasRoadV) {
+      const roadX = baseX + CHUNK_SIZE/2;
+      for (let i = 0; i < 4; i++) {
+        const lz = baseZ + 2.5 + i * 5 + (rand() - 0.5);
+        const side = (i % 2 === 0) ? -3.5 : 3.5;
+        createStreetLamp(roadX + side, lz, rand, group, getTerrainHeight);
+      }
+    }
+
+    const treeCount = 1 + Math.floor(rand() * 3);
+    for (let i = 0; i < treeCount; i++) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      const onRoadH = hasRoadH && Math.abs(z - (baseZ + CHUNK_SIZE/2)) < 4;
+      const onRoadV = hasRoadV && Math.abs(x - (baseX + CHUNK_SIZE/2)) < 4;
+      if (onRoadH || onRoadV) continue;
+      createSnowTree(x, z, rand, group, getTerrainHeight);
+      addObstacle(x, z, 0.5, key);
+    }
+
+    const driftCount = 3 + Math.floor(rand() * 5);
+    for (let i = 0; i < driftCount; i++) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      createSnowdrift(x, z, rand, group, getTerrainHeight);
+    }
+
+    if (rand() < 0.3) {
+      const x = baseX + 5 + rand() * (CHUNK_SIZE - 10);
+      const z = baseZ + 5 + rand() * (CHUNK_SIZE - 10);
+      createBench(x, z, rand, group, getTerrainHeight);
+      addObstacle(x, z, 0.7, key);
+    }
+
+    // Мирные жители
+    if (deps.onSpawnCitizen && rand() < 0.4) {
+      const cx2 = baseX + rand() * CHUNK_SIZE;
+      const cz2 = baseZ + rand() * CHUNK_SIZE;
+      const onRoadH2 = hasRoadH && Math.abs(cz2 - (baseZ + CHUNK_SIZE/2)) < 4;
+      const onRoadV2 = hasRoadV && Math.abs(cx2 - (baseX + CHUNK_SIZE/2)) < 4;
+      if (!onRoadH2 && !onRoadV2) {
+        deps.onSpawnCitizen(cx2, cz2);
+      }
+    }
   }
 
-  const grassDensity = SETTINGS.grass;
+  // ============ ПУСТЫНЯ ============
+  if (BIOME.current === 'desert') {
+    const cactusCount = Math.floor(rand() * 3) + 1;
+    for (let i = 0; i < cactusCount; i++) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      const onRoadH = hasRoadH && Math.abs(z - (baseZ + CHUNK_SIZE/2)) < 4;
+      const onRoadV = hasRoadV && Math.abs(x - (baseX + CHUNK_SIZE/2)) < 4;
+      if (onRoadH || onRoadV) continue;
+      createCactus(x, z, rand, group, getTerrainHeight);
+      addObstacle(x, z, 0.4, key);
+    }
+
+    const rockCount = 2 + Math.floor(rand() * 4);
+    for (let i = 0; i < rockCount; i++) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      const onRoadH = hasRoadH && Math.abs(z - (baseZ + CHUNK_SIZE/2)) < 4;
+      const onRoadV = hasRoadV && Math.abs(x - (baseX + CHUNK_SIZE/2)) < 4;
+      if (onRoadH || onRoadV) continue;
+      createRock(x, z, rand, group, getTerrainHeight);
+      addObstacle(x, z, 0.6, key);
+    }
+
+    if (rand() < 0.4) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      createTumbleweed(x, z, rand, group, getTerrainHeight);
+    }
+
+    if (rand() < 0.15) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      createPalm(x, z, rand, group, getTerrainHeight);
+      addObstacle(x, z, 0.4, key);
+    }
+  }
+
+  // ============ ЛЕС ============
+  if (BIOME.current === 'forest') {
+    const treeCount = SETTINGS.trees + Math.floor(rand() * (SETTINGS.trees * 0.5));
+    for (let i = 0; i < treeCount; i++) {
+      const x = baseX + rand() * CHUNK_SIZE;
+      const z = baseZ + rand() * CHUNK_SIZE;
+      const onRoadH = hasRoadH && Math.abs(z - (baseZ + CHUNK_SIZE/2)) < 4;
+      const onRoadV = hasRoadV && Math.abs(x - (baseX + CHUNK_SIZE/2)) < 4;
+      if (onRoadH || onRoadV) continue;
+      createTree(x, z, rand, group, key);
+    }
+  }
+
+  // Трава — только в лесу
+  const grassDensity = (BIOME.current === 'forest') ? SETTINGS.grass : 0;
   if (grassDensity > 0) {
     const grassMaterial = new THREE.MeshBasicMaterial({
       color: 0x5a9a3a, side: THREE.DoubleSide, transparent: true, opacity: 0.9
@@ -1034,7 +1188,8 @@ export function generateChunk(cx, cz, deps) {
     }
   }
 
-  const flowerCount = 12 + Math.floor(rand() * 12);
+  // Цветы — только в лесу
+  const flowerCount = (BIOME.current === 'forest') ? (12 + Math.floor(rand() * 12)) : 0;
   for (let i = 0; i < flowerCount; i++) {
     const fx = baseX + rand() * CHUNK_SIZE;
     const fz = baseZ + rand() * CHUNK_SIZE;
@@ -1044,7 +1199,9 @@ export function generateChunk(cx, cz, deps) {
     createFlower(fx, fz, group);
   }
 
-  const butterflyCount = SETTINGS.butterflies > 0 ? Math.max(1, Math.floor(SETTINGS.butterflies * (0.5 + rand()))) : 0;
+  // Бабочки — только в лесу
+  const butterflyCount = (BIOME.current === 'forest') ?
+    (SETTINGS.butterflies > 0 ? Math.max(1, Math.floor(SETTINGS.butterflies * (0.5 + rand()))) : 0) : 0;
   for (let i = 0; i < butterflyCount; i++) {
     const bx = baseX + 10 + rand() * (CHUNK_SIZE - 20);
     const bz = baseZ + 10 + rand() * (CHUNK_SIZE - 20);
@@ -1056,7 +1213,10 @@ export function generateChunk(cx, cz, deps) {
   scene.add(group);
   worldState.chunks.set(key, { group, cx, cz });
 
-  if (!isStartChunk && rand() < 0.12 && deps.onSpawnBase) {
+  if (!isStartChunk && rand() < (
+    BIOME.current === 'desert' ? 0.05 :
+    BIOME.current === 'snow_city' ? 0.03 : 0.12
+  ) && deps.onSpawnBase) {
     const bx = baseX + 20 + rand() * (CHUNK_SIZE - 40);
     const bz = baseZ + 20 + rand() * (CHUNK_SIZE - 40);
     if (Math.hypot(bx - deps.player.position.x, bz - deps.player.position.z) > 50) {
@@ -1074,6 +1234,13 @@ export function removeChunk(cx, cz, player) {
   worldState.scene.remove(chunk.group);
   worldState.chunks.delete(key);
 
+  // ✅ Удаляем коллизии этого чанка
+  for (let i = worldState.obstacles.length - 1; i >= 0; i--) {
+    if (worldState.obstacles[i].chunkKey === key) {
+      worldState.obstacles.splice(i, 1);
+    }
+  }
+
   const ccx = cx * CHUNK_SIZE + CHUNK_SIZE / 2;
   const ccz = cz * CHUNK_SIZE + CHUNK_SIZE / 2;
   for (let i = wildlife.butterflies.length - 1; i >= 0; i--) {
@@ -1089,7 +1256,20 @@ export function removeChunk(cx, cz, player) {
   }
 }
 
-// ============ ОЧЕРЕДЬ ГЕНЕРАЦИИ ЧАНКОВ ============
+// ============ АНИМАЦИЯ БИОМА ============
+export function updateBiomeAnimated(dt, scene) {
+  if (BIOME.current === 'desert') {
+    for (const [, chunk] of worldState.chunks) {
+      updateDesertAnimated(dt, chunk.group);
+    }
+  } else if (BIOME.current === 'snow_city') {
+    for (const [, chunk] of worldState.chunks) {
+      updateSnowCityAnimated(dt, chunk.group);
+    }
+  }
+}
+
+// ============ ОЧЕРЕДЬ ГЕНЕРАЦИИ ============
 const chunkQueue = [];
 let chunkGenCooldown = 0;
 let chunkCleanupTick = 0;
